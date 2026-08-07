@@ -274,6 +274,11 @@ func cloneBlocks(blocks []chunking.Block) []chunking.Block {
 		cloned[i] = blocks[i]
 		cloned[i].SourceUnitIDs = append([]string(nil), blocks[i].SourceUnitIDs...)
 		cloned[i].Metadata = metadatautil.Clone(blocks[i].Metadata)
+		if blocks[i].Structure != nil {
+			structure := *blocks[i].Structure
+			structure.Path = append([]string(nil), blocks[i].Structure.Path...)
+			cloned[i].Structure = &structure
+		}
 	}
 	return cloned
 }

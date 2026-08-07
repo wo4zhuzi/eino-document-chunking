@@ -30,6 +30,16 @@ func cloneBlocks(blocks []Block) []Block {
 		cloned[i] = blocks[i]
 		cloned[i].SourceUnitIDs = append([]string(nil), blocks[i].SourceUnitIDs...)
 		cloned[i].Metadata = metadatautil.Clone(blocks[i].Metadata)
+		cloned[i].Structure = cloneBlockStructure(blocks[i].Structure)
 	}
 	return cloned
+}
+
+func cloneBlockStructure(structure *BlockStructure) *BlockStructure {
+	if structure == nil {
+		return nil
+	}
+	cloned := *structure
+	cloned.Path = append([]string(nil), structure.Path...)
+	return &cloned
 }

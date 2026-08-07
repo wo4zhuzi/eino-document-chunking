@@ -72,3 +72,13 @@
 - Eino Transformer 投影下沉到 `einoadapter`，避免核心包绑定组件适配细节。
 - 通用文本切分和 Metadata 克隆下沉到 `internal`，不暴露为公共 API。
 - 不机械创建未使用的 registry/tokenizer 文件，继续遵循最小实现原则。
+
+## Structure-aware 设计决策
+
+- 保留 `FormatAdapter -> Block -> Strategy -> Result` 主架构，不修改 Engine 调度、Strategy 接口、Result、Statistics 或现有 Eino Transformer。
+- `Block` 增加可选 `*BlockStructure`，统一表达逻辑块类型、深度、结构父节点、标题路径和软硬边界；现有 Adapter 与父子策略保持兼容。
+- `StructuredDocumentAdapter` 通过注入的 `StructureResolver` 从上游标准 Document 解析结构，不承担 Markdown/PDF/HTML 原始格式解析。
+- Structure-aware Strategy 输出扁平 `structure` Chunk；不跨 DocumentID 或硬边界，标题维护路径，相邻兼容块在长度限制内合并。
+- 扁平 Structure Chunk 的 `Level` 固定为 0；原始结构深度写入 `eino_chunking.structure.depth`，保持全局相邻关系的同层约束。
+- 代码和表格视为原子块；超限时交给可注入 OversizeSplitter，没有可用 Splitter 时明确报错。
+- 缺少结构信息不静默退化，返回明确错误；由 Structured Adapter 显式把无特殊结构的单元标记为 `text`。

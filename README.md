@@ -2,7 +2,7 @@
 
 `eino-document-chunking` 是面向 CloudWeGo Eino 的可扩展文档 Chunking 框架。它接收 Loader、Parser 或 [`eino-document-ingestion`](https://github.com/wo4zhuzi/eino-document-ingestion) 产生的标准 `[]*schema.Document`，输出可供 Embedding、Indexer 和 Retriever 使用的 Chunk、关系、统计与可追溯元数据。
 
-当前版本只实现父子 Chunk。固定长度、递归、语义、多层、代码和表格专用 Chunk 等能力仅是未来方向，尚未实现。
+当前内置父子 Chunk 和 Structure-aware Chunk。固定长度、递归、语义、多层、代码和表格专用 Chunk 等能力仅是未来方向，尚未实现。
 
 ## 责任边界
 
@@ -11,6 +11,7 @@
 - `schema.Document` 到 Chunk 的确定性转换。
 - 格式适配与 Chunk 策略的解耦和选择。
 - 有界父 Chunk、子 Chunk、稳定 ID、层级和相邻关系。
+- 基于统一逻辑结构的边界感知 Chunk。
 - 输入 Metadata 保留、来源单元追踪、Profile 名称和版本记录。
 - 完整 Chunk Result 与 Eino `document.Transformer` 适配。
 
@@ -59,8 +60,10 @@ Result              Profile + Chunk + Relation + Statistics
 eino-document-chunking/
 ├── engine.go
 │   └── Engine、EngineConfig、统一执行和结果装饰
+├── block.go
+│   └── Block、BlockStructure、BlockKind 与结构边界契约
 ├── types.go
-│   └── Block、Chunk、Relation、Result、Strategy、FormatAdapter
+│   └── Chunk、Relation、Result、Strategy 与 FormatAdapter 契约
 ├── profile.go
 │   └── 可复现配置的名称和版本
 ├── id.go
@@ -79,19 +82,31 @@ eino-document-chunking/
 │   └── Engine、扩展契约、错误与并发集成测试
 │
 ├── adapter/
-│   └── document.go
-│       └── schema.Document -> Block 默认适配器
+│   ├── document.go
+│   │   └── schema.Document -> Block 默认适配器
+│   ├── structured.go
+│   │   └── 通过 StructureResolver 生成结构化 Block
+│   └── structured_test.go
 │
 ├── strategy/
-│   └── parentchild/
+│   ├── parentchild/
+│   │   ├── strategy.go
+│   │   │   └── 父子 Chunk、稳定顺序、ID 与 Relation 构建
+│   │   ├── parent_builder.go
+│   │   │   └── ParentBuilder 与默认有界父级构造器
+│   │   ├── splitter.go
+│   │   │   └── ChildSplitter、默认切分器和 Eino Transformer 包装
+│   │   ├── context.go
+│   │   │   └── Context 取消与超时检查
+│   │   └── strategy_test.go
+│   └── structureaware/
+│       ├── config.go
+│       │   └── 大小、标题上下文和原子块 Splitter 配置
 │       ├── strategy.go
-│       │   └── 父子 Chunk、稳定顺序、ID 与 Relation 构建
-│       ├── parent_builder.go
-│       │   └── ParentBuilder 与默认有界父级构造器
-│       ├── splitter.go
-│       │   └── ChildSplitter、默认切分器和 Eino Transformer 包装
+│       │   └── 结构边界、路径、合并、ID 和 Relation 构建
+│       ├── metadata.go
+│       │   └── Structure-aware 稳定 Metadata Key
 │       ├── context.go
-│       │   └── Context 取消与超时检查
 │       └── strategy_test.go
 │
 ├── einoadapter/
@@ -106,8 +121,10 @@ eino-document-chunking/
 │       └── 按 Unicode 字符和自然边界切分文本
 │
 ├── examples/
-│   └── parent-child/
-│       └── main.go              # 完全离线父子 Chunk 示例
+│   ├── parent-child/
+│   │   └── main.go              # 完全离线父子 Chunk 示例
+│   └── structure-aware/
+│       └── main.go              # 完全离线结构感知示例
 │
 ├── go.mod                       # Go 与 Eino 依赖版本
 ├── go.sum
@@ -120,6 +137,7 @@ eino-document-chunking/
 
 - `Engine`：统一执行、输入克隆、错误包装、Metadata 装饰和结果校验。
 - `FormatAdapter`：将标准 Document 转为统一 `Block`。
+- `BlockStructure`：可选的逻辑块类型、深度、父节点、路径和边界。
 - `Strategy`：将 Block 组织为 Chunk 和 Relation。
 - `Profile`：可复现配置的名称和版本。
 - `IDGenerator`：可注入稳定 ID 生成器，默认使用 SHA-256。
@@ -151,6 +169,39 @@ eino-document-chunking/
 4. 基于输入顺序和内容生成的稳定来源 ID。
 
 nil 和空白 Document 会被忽略；全部为空时返回 `ErrNoValidBlocks`。
+
+## Structure-aware Chunk
+
+Structure-aware Chunk 消费上游 Parser 已经拆分好的标题、段落、列表项、代码、表格和引用等结构单元。本项目不解析 Markdown AST、PDF 版面或 HTML DOM；调用方通过 `StructureResolver` 把 Parser Metadata 转换成类型安全的 `BlockStructure`。
+
+`BlockStructure` 包含：
+
+- `Kind`：`text`、`heading`、`paragraph`、`list_item`、`code`、`table`、`quote` 或调用方扩展类型。
+- `Depth`：原始逻辑结构深度。
+- `ParentID`：可选的结构父 Block ID。
+- `Path`：标题或章节路径。
+- `Boundary`：无边界、软边界或硬边界。
+
+默认策略行为：
+
+- 严格保持输入顺序，不跨 `DocumentID` 或硬边界合并。
+- Heading 开始新的结构 Chunk；不同结构路径不会合并。
+- 软边界在当前 Chunk 达到 `MinRunes` 后优先切分。
+- 相邻兼容 Block 在 `MaxRunes` 内合并。
+- 标题路径默认写入 Chunk 内容和 Metadata；可显式选择仅写 Metadata。
+- 普通超长文本按稳定自然边界切分。
+- Code 和 Table 作为原子块，超限时必须提供 `OversizeSplitter`，否则返回 `ErrOversizeBlock`。
+- 输出是扁平 `structure` Chunk，`Level` 固定为 `0`；原始结构深度保存在 `eino_chunking.structure.depth`。
+- 同文档 Chunk 建立 Previous/Next Relation，每个 Chunk 建立 Source Relation。
+- 缺少结构信息返回 `ErrStructureRequired`，不会静默退化为普通文本切分。
+
+完全离线示例：
+
+```bash
+go run ./examples/structure-aware
+```
+
+示例演示如何注入 `StructureResolver`，以及如何从标准 Document Metadata 构建标题和段落结构。
 
 ## 快速开始
 
@@ -199,6 +250,7 @@ func main() {
 
 ```bash
 go run ./examples/parent-child
+go run ./examples/structure-aware
 ```
 
 预期输出为 JSON，包含 `profile`、`adapter_name`、`strategy_name`、`chunks`、`relations` 和 `statistics`；不需要网络、模型、数据库或 API Key。
@@ -255,6 +307,8 @@ transformer, err := einoadapter.NewEinoTransformer(engine, einoadapter.EinoTrans
 - `TransformerOutputChildren`：只返回子 Chunk，适合交给 Embedding/向量 Indexer。
 - `TransformerOutputAll`：按 Result 顺序返回全部 Chunk。
 
+Structure-aware Engine 只有一种 `structure` Chunk，接入 Eino Graph 时显式选择 `TransformerOutputAll` 即可返回全部结构 Chunk。
+
 未指定输出模式会返回 `ErrInvalidConfig`，不存在隐式默认行为。
 
 ## Metadata 契约
@@ -276,6 +330,14 @@ transformer, err := einoadapter.NewEinoTransformer(engine, einoadapter.EinoTrans
 | `MetadataCharacterCount` / `MetadataTokenCount` | 长度统计 |
 | `MetadataProfileName` / `MetadataProfileVersion` | Profile 标识 |
 | `MetadataStrategyName` / `MetadataAdapterName` | 执行组件标识 |
+
+Structure-aware Strategy 另外集中定义：
+
+| 常量 | Key |
+|---|---|
+| `MetadataStructureDepth` | `eino_chunking.structure.depth` |
+| `MetadataStructurePath` | `eino_chunking.structure.path` |
+| `MetadataStructureBlockKinds` | `eino_chunking.structure.block_kinds` |
 
 这些 Key 属于保留命名空间。输入或自定义策略提前写入同名 Key 时返回 `ErrMetadataConflict`，不会覆盖调用方字段。
 
@@ -343,13 +405,14 @@ go vet ./...
 
 预期结果：所有包测试通过，race detector 无数据竞争，`go vet` 无诊断。
 
-测试覆盖单/多文档、父子与相邻关系、稳定 ID、Metadata 和输入不可变、空输入、非法配置、依赖错误、重复 ID、非法关系、Context 取消/超时、并发调用、Eino Transformer，以及无需修改 Engine 的自定义 Strategy。
+测试覆盖单/多文档、父子与相邻关系、结构边界和路径、原子块超限、稳定 ID、Metadata 和输入不可变、空输入、非法配置、依赖错误、重复 ID、非法关系、Context 取消/超时、并发调用、Eino Transformer，以及无需修改 Engine 的自定义 Strategy。
 
 ## 已知限制
 
 
 - 默认切分按 Unicode 字符计数，不提供模型 Tokenizer；`TokenCount` 默认是 `0`，`CharacterCount` 始终可用。
 - 默认文本边界切分不理解 Markdown AST、代码语法、表格结构或语义相似度；这些能力应通过 FormatAdapter、ParentBuilder 或 ChildSplitter 扩展。
+- Structure-aware Chunk 依赖上游 Parser 提供结构单元及 Metadata；`StructureResolver` 只做结构映射，不解析原始文件。
 - Metadata 深拷贝覆盖常见 JSON/Eino map 和 slice 类型；未知自定义引用类型按原值保留，调用方不应在 Chunking 期间并发修改此类对象。
 - 本项目不提供父 Chunk 存储、向量数据库、索引事务、Retriever 聚合或版本发布。
 

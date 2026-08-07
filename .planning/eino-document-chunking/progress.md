@@ -27,3 +27,20 @@
 - 最终执行 `git diff --check`：通过，无空白错误。
 - 用户指出根目录平铺不利于未来扩展，已确认根因并启动包结构重构。
 - 新结构按职责拆分，不机械照抄示例文件名，也不引入未使用抽象。
+- 已完成包结构重构及回归验证，用户确认继续实现 Structure-aware Chunking。
+- 已确定最小实现范围：Block 可选结构契约、Structured Adapter、扁平 Structure-aware Strategy、离线测试与文档；不修改 Engine 调度和现有父子行为。
+- 已为 Block 增加可选 BlockStructure、开放 BlockKind、软硬边界和结构错误契约；补齐 Engine 与父子策略的防御性复制。
+- 核心变更后执行 `go test ./...` 通过，现有父子策略和 Eino 适配无回归。
+- 已实现 StructuredDocumentAdapter、StructureResolver 与函数适配器，覆盖输入复制、稳定 Block ID、结构必填和错误包装。
+- Adapter 单测及全仓测试通过。
+- 已实现 StructureAwareStrategy：结构路径和硬边界分组、软边界阈值、标题上下文、普通文本稳定切分、原子块注入 Splitter、扁平相邻与来源关系。
+- 首次策略测试发现结构深度与相邻关系同层约束冲突，已修正为扁平 Chunk Level=0、结构深度写入专用 Metadata。
+- 已补齐结构父节点、Metadata 冲突、原子块 Splitter 错误/空输出/超限输出、重复 ID、并发、Context 和 Eino OutputAll 测试。
+- 已新增 `examples/structure-aware` 并运行成功，输出 2 个结构 Chunk 和完整关系。
+- README 已更新当前能力、项目结构、Structure-aware 契约、边界、示例与限制。
+- 最终执行 `gofmt -w`：完成。
+- 最终执行 `go test ./...`：全部通过。
+- 最终执行 `go test -race ./...`：全部通过，无数据竞争。
+- 最终执行 `go vet ./...`：通过，无诊断。
+- `go run ./examples/parent-child` 和 `go run ./examples/structure-aware` 均运行成功。
+- Structure-aware 离线示例输出 2 个扁平结构 Chunk、相邻关系和来源关系。

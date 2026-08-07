@@ -6,16 +6,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// Block is the format-neutral logical unit consumed by chunk strategies.
-type Block struct {
-	ID            string         `json:"id"`
-	DocumentID    string         `json:"document_id"`
-	Content       string         `json:"content"`
-	Sequence      int            `json:"sequence"`
-	SourceUnitIDs []string       `json:"source_unit_ids"`
-	Metadata      map[string]any `json:"metadata"`
-}
-
 // ChunkKind describes the semantic role of a chunk.
 type ChunkKind string
 

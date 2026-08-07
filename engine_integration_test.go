@@ -258,6 +258,18 @@ func TestEngineProtectsInputFromMutatingDependencies(t *testing.T) {
 	if document.Content != "original content" || nested["value"] != "original" {
 		t.Fatalf("splitter mutated caller input: %#v", document)
 	}
+
+	structure := &BlockStructure{
+		Kind: BlockKindParagraph,
+		Path: []string{"original"},
+	}
+	structureEngine := newEngineForTest(t, &structureAdapter{structure: structure}, &structureMutatingStrategy{}, nil)
+	if _, err := structureEngine.Chunk(context.Background(), []*schema.Document{{ID: "doc", Content: "content"}}); err != nil {
+		t.Fatalf("Chunk(structure mutation) error = %v", err)
+	}
+	if structure.Path[0] != "original" {
+		t.Fatalf("strategy mutated adapter-owned structure: %#v", structure)
+	}
 }
 
 func newEngineForTest(t *testing.T, adapter FormatAdapter, strategy Strategy, generator IDGenerator) *Engine {
@@ -333,6 +345,21 @@ func (*mutatingAdapter) Adapt(_ context.Context, documents []*schema.Document) (
 		Content:       documents[0].Content,
 		SourceUnitIDs: []string{documents[0].ID},
 		Metadata:      documents[0].MetaData,
+	}}, nil
+}
+
+type structureAdapter struct {
+	structure *BlockStructure
+}
+
+func (*structureAdapter) Name() string { return "structure_adapter" }
+func (adapter *structureAdapter) Adapt(_ context.Context, documents []*schema.Document) ([]Block, error) {
+	return []Block{{
+		ID:            documents[0].ID,
+		DocumentID:    documents[0].ID,
+		Content:       documents[0].Content,
+		SourceUnitIDs: []string{documents[0].ID},
+		Structure:     adapter.structure,
 	}}, nil
 }
 
@@ -438,6 +465,14 @@ func (*customStrategy) Chunk(ctx context.Context, input StrategyInput) (*Strateg
 		})
 	}
 	return &StrategyOutput{Chunks: chunks, Relations: testBuildRelations(chunks)}, nil
+}
+
+type structureMutatingStrategy struct{}
+
+func (*structureMutatingStrategy) Name() string { return "structure_mutating_strategy" }
+func (*structureMutatingStrategy) Chunk(ctx context.Context, input StrategyInput) (*StrategyOutput, error) {
+	input.Blocks[0].Structure.Path[0] = "mutated"
+	return (&customStrategy{}).Chunk(ctx, input)
 }
 
 func testBuildRelations(chunks []Chunk) []Relation {

@@ -136,6 +136,10 @@ func normalizeBlocks(blocks []Block) ([]Block, error) {
 			return nil, fmt.Errorf("block id %q: %w", block.ID, err)
 		}
 		block.Metadata = metadatautil.Clone(block.Metadata)
+		block.Structure = cloneBlockStructure(block.Structure)
+		if err := normalizeBlockStructure(block.ID, block.Structure); err != nil {
+			return nil, err
+		}
 		block.Sequence = len(normalized) + 1
 		if len(block.SourceUnitIDs) == 0 {
 			block.SourceUnitIDs = []string{block.ID}
@@ -153,6 +157,33 @@ func normalizeBlocks(blocks []Block) ([]Block, error) {
 		return nil, ErrNoValidBlocks
 	}
 	return normalized, nil
+}
+
+func normalizeBlockStructure(blockID string, structure *BlockStructure) error {
+	if structure == nil {
+		return nil
+	}
+	structure.Kind = BlockKind(strings.TrimSpace(string(structure.Kind)))
+	structure.ParentID = strings.TrimSpace(structure.ParentID)
+	if structure.Kind == "" {
+		return fmt.Errorf("%w: block %q has an empty structure kind", ErrInvalidStructure, blockID)
+	}
+	if structure.Depth < 0 {
+		return fmt.Errorf("%w: block %q has negative structure depth", ErrInvalidStructure, blockID)
+	}
+	switch structure.Boundary {
+	case BlockBoundaryNone, BlockBoundarySoft, BlockBoundaryHard:
+	default:
+		return fmt.Errorf("%w: block %q has unsupported boundary %q", ErrInvalidStructure, blockID, structure.Boundary)
+	}
+	for index, item := range structure.Path {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return fmt.Errorf("%w: block %q has an empty structure path item", ErrInvalidStructure, blockID)
+		}
+		structure.Path[index] = item
+	}
+	return nil
 }
 
 func decorateChunkMetadata(
