@@ -9,6 +9,24 @@ import (
 	"strconv"
 )
 
+// IDInput contains the stable fields used to generate a chunk ID.
+type IDInput struct {
+	Profile       Profile
+	StrategyName  string
+	Kind          ChunkKind
+	Level         int
+	DocumentID    string
+	ParentID      string
+	Sequence      int
+	Content       string
+	SourceUnitIDs []string
+}
+
+// IDGenerator generates deterministic chunk IDs for a strategy invocation.
+type IDGenerator interface {
+	Generate(ctx context.Context, input IDInput) (string, error)
+}
+
 // SHA256IDGenerator generates stable content-addressed chunk IDs.
 type SHA256IDGenerator struct{}
 

@@ -51,6 +51,25 @@ Result              Profile + Chunk + Relation + Statistics
 
 格式和策略是两个独立扩展维度。新增 PDF、Markdown、表格等格式适配时实现 `FormatAdapter`；新增 Chunk 策略时实现 `Strategy`。不需要创建 `PDFParentChildChunker`、`MarkdownParentChildChunker` 这类组合类型。
 
+仓库按职责组织，而不是按格式和策略做组合：
+
+```text
+.
+├── engine.go                    # 稳定执行入口与结果装饰
+├── types.go                     # Block、Chunk、Relation、Strategy 等核心契约
+├── profile.go                   # 可复现 Profile
+├── id.go                        # 稳定 ID 契约与默认实现
+├── metadata.go                  # 集中的 Metadata Key
+├── adapter/                     # Document -> Block 的格式适配
+├── strategy/
+│   └── parentchild/             # 当前唯一内置父子 Chunk 策略
+├── einoadapter/                 # Eino document.Transformer 投影
+├── internal/                    # 非公开 Metadata 与文本工具
+└── examples/                    # 完全离线示例
+```
+
+根包只保留稳定契约和 Engine，不依赖任何具体 Adapter 或 Strategy。具体实现通过构造函数注入，因此未来新增格式或策略时不会修改 Engine，也不会形成“格式数量 × 策略数量”的包结构。
+
 核心公开契约包括：
 
 - `Engine`：统一执行、输入克隆、错误包装、Metadata 装饰和结果校验。
@@ -98,16 +117,18 @@ import (
 
     "github.com/cloudwego/eino/schema"
     chunking "github.com/wo4zhuzi/eino-document-chunking"
+    "github.com/wo4zhuzi/eino-document-chunking/adapter"
+    "github.com/wo4zhuzi/eino-document-chunking/strategy/parentchild"
 )
 
 func main() {
-    strategy, err := chunking.NewParentChildStrategy(chunking.ParentChildConfig{})
+    strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{})
     if err != nil {
         panic(err)
     }
     engine, err := chunking.NewEngine(chunking.EngineConfig{
         Profile:  chunking.Profile{Name: "knowledge-base", Version: "v1"},
-        Adapter:  chunking.NewDocumentAdapter(),
+        Adapter:  adapter.NewDocumentAdapter(),
         Strategy: strategy,
     })
     if err != nil {
@@ -139,14 +160,14 @@ go run ./examples/parent-child
 ## 注入父级构造器和子级 Transformer
 
 ```go
-parentBuilder, err := chunking.NewBoundedParentBuilder(chunking.BoundedParentBuilderConfig{
+parentBuilder, err := parentchild.NewBoundedParentBuilder(parentchild.BoundedParentBuilderConfig{
     MaxRunes: 1200,
 })
 if err != nil {
     return err
 }
 
-strategy, err := chunking.NewParentChildStrategy(chunking.ParentChildConfig{
+strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{
     ParentBuilder:    parentBuilder,
     ChildTransformer: yourEinoTransformer,
 })
@@ -177,8 +198,8 @@ if err != nil {
 核心 API `Engine.Chunk` 始终返回完整 Result。接入 Eino Graph 时，通过构造参数显式选择输出：
 
 ```go
-transformer, err := chunking.NewEinoTransformer(engine, chunking.EinoTransformerConfig{
-    Output: chunking.TransformerOutputChildren,
+transformer, err := einoadapter.NewEinoTransformer(engine, einoadapter.EinoTransformerConfig{
+    Output: einoadapter.TransformerOutputChildren,
 })
 ```
 
@@ -268,7 +289,7 @@ Loader / Parser / eino-document-ingestion
 默认测试完全离线：
 
 ```bash
-gofmt -w *.go examples/parent-child/main.go
+gofmt -w *.go adapter/*.go strategy/parentchild/*.go einoadapter/*.go internal/*/*.go examples/parent-child/*.go
 go test ./...
 go test -race ./...
 go vet ./...

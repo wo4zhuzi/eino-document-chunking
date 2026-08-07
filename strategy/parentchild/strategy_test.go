@@ -1,4 +1,4 @@
-package chunking
+package parentchild
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
+	. "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/adapter"
 )
 
 func TestParentChildSingleAndMultipleDocuments(t *testing.T) {
@@ -46,7 +48,7 @@ func TestParentChildSingleAndMultipleDocuments(t *testing.T) {
 	if result.Profile != (Profile{Name: "knowledge", Version: "v1"}) {
 		t.Fatalf("Profile = %#v", result.Profile)
 	}
-	if result.AdapterName != documentAdapterName || result.StrategyName != ParentChildStrategyName {
+	if result.AdapterName != "document" || result.StrategyName != ParentChildStrategyName {
 		t.Fatalf("adapter=%q strategy=%q", result.AdapterName, result.StrategyName)
 	}
 	if result.Statistics.InputDocumentCount != 3 || result.Statistics.BlockCount != 3 {
@@ -69,7 +71,7 @@ func TestParentChildSingleAndMultipleDocuments(t *testing.T) {
 		if chunk.Metadata[MetadataProfileName] != "knowledge" ||
 			chunk.Metadata[MetadataProfileVersion] != "v1" ||
 			chunk.Metadata[MetadataStrategyName] != ParentChildStrategyName ||
-			chunk.Metadata[MetadataAdapterName] != documentAdapterName {
+			chunk.Metadata[MetadataAdapterName] != "document" {
 			t.Fatalf("chunk %q metadata = %#v", chunk.ID, chunk.Metadata)
 		}
 		chunkByID[chunk.ID] = chunk
@@ -120,7 +122,7 @@ func TestDefaultParentBuilderBoundsLargeDocuments(t *testing.T) {
 	}
 	engine, err := NewEngine(EngineConfig{
 		Profile:  Profile{Name: "bounded", Version: "v1"},
-		Adapter:  NewDocumentAdapter(),
+		Adapter:  adapter.NewDocumentAdapter(),
 		Strategy: strategy,
 	})
 	if err != nil {
@@ -215,7 +217,7 @@ func newTestEngine(t *testing.T, parentRunes, childRunes int) *Engine {
 	}
 	engine, err := NewEngine(EngineConfig{
 		Profile:  Profile{Name: "knowledge", Version: "v1"},
-		Adapter:  NewDocumentAdapter(),
+		Adapter:  adapter.NewDocumentAdapter(),
 		Strategy: strategy,
 	})
 	if err != nil {
@@ -263,4 +265,8 @@ func assertRelationsMatchChunks(t *testing.T, result *Result) {
 			t.Fatalf("unexpected relation %#v", relation)
 		}
 	}
+}
+
+func relationKey(relationType RelationType, fromID, toID string) string {
+	return string(relationType) + "\x00" + fromID + "\x00" + toID
 }

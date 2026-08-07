@@ -1,4 +1,4 @@
-package chunking
+package adapter
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino/schema"
+	chunking "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
 )
 
 const (
@@ -31,11 +33,11 @@ func (*DocumentAdapter) Name() string {
 }
 
 // Adapt implements FormatAdapter without modifying the supplied documents.
-func (*DocumentAdapter) Adapt(ctx context.Context, documents []*schema.Document) ([]Block, error) {
+func (*DocumentAdapter) Adapt(ctx context.Context, documents []*schema.Document) ([]chunking.Block, error) {
 	if err := contextError(ctx, "adapt documents"); err != nil {
 		return nil, err
 	}
-	blocks := make([]Block, 0, len(documents))
+	blocks := make([]chunking.Block, 0, len(documents))
 	for inputIndex, document := range documents {
 		if err := contextError(ctx, "adapt documents"); err != nil {
 			return nil, err
@@ -43,13 +45,13 @@ func (*DocumentAdapter) Adapt(ctx context.Context, documents []*schema.Document)
 		if document == nil || strings.TrimSpace(document.Content) == "" {
 			continue
 		}
-		metadata := cloneMetadata(document.MetaData)
+		metadata := metadatautil.Clone(document.MetaData)
 		documentID := resolveDocumentID(inputIndex, document, metadata)
 		unitID := strings.TrimSpace(document.ID)
 		if unitID == "" {
 			unitID = stableUnitID(documentID, inputIndex, document.Content)
 		}
-		blocks = append(blocks, Block{
+		blocks = append(blocks, chunking.Block{
 			ID:            unitID,
 			DocumentID:    documentID,
 			Content:       document.Content,
@@ -80,8 +82,14 @@ func stableUnitID(documentID string, index int, content string) string {
 	return "unit_" + hex.EncodeToString(sum[:])
 }
 
-var _ FormatAdapter = (*DocumentAdapter)(nil)
-
-func adapterError(name string, err error) error {
-	return fmt.Errorf("%w: adapter=%q: %w", ErrAdapterFailed, name, err)
+func contextError(ctx context.Context, operation string) error {
+	if ctx == nil {
+		return chunking.ErrNilContext
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+	return nil
 }
+
+var _ chunking.FormatAdapter = (*DocumentAdapter)(nil)

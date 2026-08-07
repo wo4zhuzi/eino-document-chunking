@@ -1,13 +1,15 @@
-package chunking
+package parentchild
 
 import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode"
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
+	chunking "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/textutil"
 )
 
 const DefaultMaxChildRunes = 500
@@ -34,7 +36,7 @@ func NewBoundedTextSplitter(config BoundedTextSplitterConfig) (*BoundedTextSplit
 		maxRunes = DefaultMaxChildRunes
 	}
 	if maxRunes < 1 {
-		return nil, fmt.Errorf("%w: child MaxRunes must be positive", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: child MaxRunes must be positive", chunking.ErrInvalidConfig)
 	}
 	return &BoundedTextSplitter{maxRunes: maxRunes}, nil
 }
@@ -42,7 +44,7 @@ func NewBoundedTextSplitter(config BoundedTextSplitterConfig) (*BoundedTextSplit
 // Split implements ChildSplitter.
 func (splitter *BoundedTextSplitter) Split(ctx context.Context, parent *schema.Document) ([]*schema.Document, error) {
 	if splitter == nil || splitter.maxRunes < 1 {
-		return nil, fmt.Errorf("%w: child splitter is unavailable", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: child splitter is unavailable", chunking.ErrInvalidConfig)
 	}
 	if err := contextError(ctx, "split parent"); err != nil {
 		return nil, err
@@ -50,7 +52,7 @@ func (splitter *BoundedTextSplitter) Split(ctx context.Context, parent *schema.D
 	if parent == nil || strings.TrimSpace(parent.Content) == "" {
 		return nil, nil
 	}
-	parts := splitBoundedText(parent.Content, splitter.maxRunes)
+	parts := textutil.SplitBounded(parent.Content, splitter.maxRunes)
 	documents := make([]*schema.Document, 0, len(parts))
 	for _, part := range parts {
 		if err := contextError(ctx, "split parent"); err != nil {
@@ -62,7 +64,7 @@ func (splitter *BoundedTextSplitter) Split(ctx context.Context, parent *schema.D
 		documents = append(documents, &schema.Document{
 			ID:       parent.ID,
 			Content:  part,
-			MetaData: cloneMetadata(parent.MetaData),
+			MetaData: metadatautil.Clone(parent.MetaData),
 		})
 	}
 	return documents, nil
@@ -76,7 +78,7 @@ type TransformerChildSplitter struct {
 // NewTransformerChildSplitter wraps an Eino document.Transformer.
 func NewTransformerChildSplitter(transformer document.Transformer) (*TransformerChildSplitter, error) {
 	if transformer == nil {
-		return nil, fmt.Errorf("%w: child transformer is required", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: child transformer is required", chunking.ErrInvalidConfig)
 	}
 	return &TransformerChildSplitter{transformer: transformer}, nil
 }
@@ -84,7 +86,7 @@ func NewTransformerChildSplitter(transformer document.Transformer) (*Transformer
 // Split implements ChildSplitter.
 func (splitter *TransformerChildSplitter) Split(ctx context.Context, parent *schema.Document) ([]*schema.Document, error) {
 	if splitter == nil || splitter.transformer == nil {
-		return nil, fmt.Errorf("%w: child transformer is unavailable", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: child transformer is unavailable", chunking.ErrInvalidConfig)
 	}
 	if err := contextError(ctx, "transform parent into children"); err != nil {
 		return nil, err
@@ -96,57 +98,26 @@ func (splitter *TransformerChildSplitter) Split(ctx context.Context, parent *sch
 	return cloneDocuments(documents), nil
 }
 
-func splitBoundedText(content string, maxRunes int) []string {
-	runes := []rune(strings.TrimSpace(content))
-	if len(runes) == 0 || maxRunes < 1 {
-		return nil
-	}
-	parts := make([]string, 0, (len(runes)+maxRunes-1)/maxRunes)
-	for start := 0; start < len(runes); {
-		end := start + maxRunes
-		if end >= len(runes) {
-			end = len(runes)
-		} else {
-			end = preferredBoundary(runes, start, end)
-		}
-		if end <= start {
-			end = start + maxRunes
-			if end > len(runes) {
-				end = len(runes)
-			}
-		}
-		part := strings.TrimSpace(string(runes[start:end]))
-		if part != "" {
-			parts = append(parts, part)
-		}
-		start = end
-		for start < len(runes) && unicode.IsSpace(runes[start]) {
-			start++
-		}
-	}
-	return parts
-}
-
-func preferredBoundary(runes []rune, start, end int) int {
-	for index := end - 1; index > start; index-- {
-		if runes[index] == '\n' && runes[index-1] == '\n' {
-			return index + 1
-		}
-	}
-	for index := end - 1; index > start; index-- {
-		if runes[index] == '\n' {
-			return index + 1
-		}
-	}
-	for index := end - 1; index > start; index-- {
-		if unicode.IsSpace(runes[index]) {
-			return index + 1
-		}
-	}
-	return end
-}
-
 var (
 	_ ChildSplitter = (*BoundedTextSplitter)(nil)
 	_ ChildSplitter = (*TransformerChildSplitter)(nil)
 )
+
+func cloneDocument(document *schema.Document) *schema.Document {
+	if document == nil {
+		return nil
+	}
+	return &schema.Document{
+		ID:       document.ID,
+		Content:  document.Content,
+		MetaData: metadatautil.Clone(document.MetaData),
+	}
+}
+
+func cloneDocuments(documents []*schema.Document) []*schema.Document {
+	cloned := make([]*schema.Document, len(documents))
+	for i, document := range documents {
+		cloned[i] = cloneDocument(document)
+	}
+	return cloned
+}

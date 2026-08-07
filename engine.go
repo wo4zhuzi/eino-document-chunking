@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
 )
 
 // EngineConfig configures the format adapter, strategy, profile, and ID generator.
@@ -69,7 +70,7 @@ func (engine *Engine) Chunk(ctx context.Context, documents []*schema.Document) (
 	inputDocuments := cloneDocuments(documents)
 	blocks, err := engine.adapter.Adapt(ctx, inputDocuments)
 	if err != nil {
-		return nil, adapterError(engine.adapter.Name(), err)
+		return nil, fmt.Errorf("%w: adapter=%q: %w", ErrAdapterFailed, engine.adapter.Name(), err)
 	}
 	blocks, err = normalizeBlocks(blocks)
 	if err != nil {
@@ -134,7 +135,7 @@ func normalizeBlocks(blocks []Block) ([]Block, error) {
 		if err := ensureNoReservedMetadata(block.Metadata); err != nil {
 			return nil, fmt.Errorf("block id %q: %w", block.ID, err)
 		}
-		block.Metadata = cloneMetadata(block.Metadata)
+		block.Metadata = metadatautil.Clone(block.Metadata)
 		block.Sequence = len(normalized) + 1
 		if len(block.SourceUnitIDs) == 0 {
 			block.SourceUnitIDs = []string{block.ID}
@@ -163,7 +164,7 @@ func decorateChunkMetadata(
 	if err := ensureNoReservedMetadata(chunk.Metadata); err != nil {
 		return fmt.Errorf("chunk id %q: %w", chunk.ID, err)
 	}
-	metadata := cloneMetadata(chunk.Metadata)
+	metadata := metadatautil.Clone(chunk.Metadata)
 	metadata[MetadataChunkID] = chunk.ID
 	metadata[MetadataChunkKind] = string(chunk.Kind)
 	metadata[MetadataChunkLevel] = chunk.Level
@@ -203,7 +204,7 @@ func cloneChunks(chunks []Chunk) []Chunk {
 	for i := range chunks {
 		cloned[i] = chunks[i]
 		cloned[i].SourceUnitIDs = append([]string(nil), chunks[i].SourceUnitIDs...)
-		cloned[i].Metadata = cloneMetadata(chunks[i].Metadata)
+		cloned[i].Metadata = metadatautil.Clone(chunks[i].Metadata)
 	}
 	return cloned
 }

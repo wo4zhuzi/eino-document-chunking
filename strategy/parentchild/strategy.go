@@ -1,4 +1,4 @@
-package chunking
+package parentchild
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
+	chunking "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
 )
 
 const ParentChildStrategyName = "parent_child"
@@ -27,7 +29,7 @@ type ParentChildStrategy struct {
 // NewParentChildStrategy creates a parent-child strategy with safe defaults.
 func NewParentChildStrategy(config ParentChildConfig) (*ParentChildStrategy, error) {
 	if config.ChildSplitter != nil && config.ChildTransformer != nil {
-		return nil, fmt.Errorf("%w: configure either ChildSplitter or ChildTransformer", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: configure either ChildSplitter or ChildTransformer", chunking.ErrInvalidConfig)
 	}
 	parentBuilder := config.ParentBuilder
 	if parentBuilder == nil {
@@ -58,31 +60,31 @@ func NewParentChildStrategy(config ParentChildConfig) (*ParentChildStrategy, err
 	}, nil
 }
 
-// Name implements Strategy.
+// Name implements chunking.Strategy.
 func (*ParentChildStrategy) Name() string {
 	return ParentChildStrategyName
 }
 
-// Chunk implements Strategy.
-func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyInput) (*StrategyOutput, error) {
+// Chunk implements chunking.Strategy.
+func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input chunking.StrategyInput) (*chunking.StrategyOutput, error) {
 	if strategy == nil || strategy.parentBuilder == nil || strategy.childSplitter == nil {
-		return nil, fmt.Errorf("%w: parent-child strategy is unavailable", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: parent-child strategy is unavailable", chunking.ErrInvalidConfig)
 	}
 	if input.IDGenerator == nil {
-		return nil, fmt.Errorf("%w: id generator is required", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: id generator is required", chunking.ErrInvalidConfig)
 	}
 	if err := contextError(ctx, "run parent-child strategy"); err != nil {
 		return nil, err
 	}
 	parents, err := strategy.parentBuilder.Build(ctx, cloneBlocks(input.Blocks))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrParentBuilderFailed, err)
+		return nil, fmt.Errorf("%w: %w", chunking.ErrParentBuilderFailed, err)
 	}
 	if len(parents) == 0 {
-		return nil, ErrNoValidChunks
+		return nil, chunking.ErrNoValidChunks
 	}
 
-	chunks := make([]Chunk, 0, len(parents)*2)
+	chunks := make([]chunking.Chunk, 0, len(parents)*2)
 	seenIDs := make(map[string]struct{}, len(parents)*2)
 	lastParentIndexByDocument := make(map[string]int)
 	for parentIndex, parent := range parents {
@@ -93,10 +95,10 @@ func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyIn
 			return nil, err
 		}
 		parentSequence := len(chunks) + 1
-		parentID, err := generateChunkID(ctx, input, IDInput{
+		parentID, err := generateChunkID(ctx, input, chunking.IDInput{
 			Profile:       input.Profile,
 			StrategyName:  strategy.Name(),
-			Kind:          ChunkKindParent,
+			Kind:          chunking.ChunkKindParent,
 			Level:         0,
 			DocumentID:    parent.DocumentID,
 			Sequence:      parentSequence,
@@ -109,15 +111,15 @@ func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyIn
 		if err := recordGeneratedID(seenIDs, parentID); err != nil {
 			return nil, err
 		}
-		parentChunk := Chunk{
+		parentChunk := chunking.Chunk{
 			ID:            parentID,
-			Kind:          ChunkKindParent,
+			Kind:          chunking.ChunkKindParent,
 			Content:       parent.Content,
 			DocumentID:    parent.DocumentID,
 			Level:         0,
 			SourceUnitIDs: append([]string(nil), parent.SourceUnitIDs...),
 			Sequence:      parentSequence,
-			Metadata:      cloneMetadata(parent.Metadata),
+			Metadata:      metadatautil.Clone(parent.Metadata),
 		}
 		if previousIndex, exists := lastParentIndexByDocument[parent.DocumentID]; exists {
 			parentChunk.PreviousID = chunks[previousIndex].ID
@@ -130,10 +132,10 @@ func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyIn
 		childDocuments, err := strategy.childSplitter.Split(ctx, &schema.Document{
 			ID:       parentID,
 			Content:  parent.Content,
-			MetaData: cloneMetadata(parent.Metadata),
+			MetaData: metadatautil.Clone(parent.Metadata),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("%w: parent=%q: %w", ErrSplitterFailed, parentID, err)
+			return nil, fmt.Errorf("%w: parent=%q: %w", chunking.ErrSplitterFailed, parentID, err)
 		}
 		previousChildIndex := -1
 		childCount := 0
@@ -145,10 +147,10 @@ func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyIn
 				continue
 			}
 			childSequence := len(chunks) + 1
-			childID, err := generateChunkID(ctx, input, IDInput{
+			childID, err := generateChunkID(ctx, input, chunking.IDInput{
 				Profile:       input.Profile,
 				StrategyName:  strategy.Name(),
-				Kind:          ChunkKindChild,
+				Kind:          chunking.ChunkKindChild,
 				Level:         1,
 				DocumentID:    parent.DocumentID,
 				ParentID:      parentID,
@@ -162,16 +164,16 @@ func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyIn
 			if err := recordGeneratedID(seenIDs, childID); err != nil {
 				return nil, err
 			}
-			childChunk := Chunk{
+			childChunk := chunking.Chunk{
 				ID:            childID,
-				Kind:          ChunkKindChild,
+				Kind:          chunking.ChunkKindChild,
 				Content:       childDocument.Content,
 				DocumentID:    parent.DocumentID,
 				Level:         1,
 				ParentID:      parentID,
 				SourceUnitIDs: append([]string(nil), parent.SourceUnitIDs...),
 				Sequence:      childSequence,
-				Metadata:      mergeMetadataPreserving(parent.Metadata, childDocument.MetaData),
+				Metadata:      metadatautil.MergePreserving(parent.Metadata, childDocument.MetaData),
 			}
 			if previousChildIndex >= 0 {
 				childChunk.PreviousID = chunks[previousChildIndex].ID
@@ -182,10 +184,10 @@ func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyIn
 			childCount++
 		}
 		if childCount == 0 {
-			return nil, fmt.Errorf("%w: parent %q produced no child chunks", ErrNoValidChunks, parentID)
+			return nil, fmt.Errorf("%w: parent %q produced no child chunks", chunking.ErrNoValidChunks, parentID)
 		}
 	}
-	return &StrategyOutput{
+	return &chunking.StrategyOutput{
 		Chunks:    chunks,
 		Relations: buildRelations(chunks),
 	}, nil
@@ -193,50 +195,50 @@ func (strategy *ParentChildStrategy) Chunk(ctx context.Context, input StrategyIn
 
 func validateParentDraft(index int, parent ParentDraft) error {
 	if strings.TrimSpace(parent.DocumentID) == "" || strings.TrimSpace(parent.Content) == "" {
-		return fmt.Errorf("%w: parent draft at index %d has empty document id or content", ErrInvalidBlock, index)
+		return fmt.Errorf("%w: parent draft at index %d has empty document id or content", chunking.ErrInvalidBlock, index)
 	}
 	if len(parent.SourceUnitIDs) == 0 {
-		return fmt.Errorf("%w: parent draft at index %d has no source units", ErrInvalidBlock, index)
+		return fmt.Errorf("%w: parent draft at index %d has no source units", chunking.ErrInvalidBlock, index)
 	}
 	for _, sourceUnitID := range parent.SourceUnitIDs {
 		if strings.TrimSpace(sourceUnitID) == "" {
-			return fmt.Errorf("%w: parent draft at index %d has an empty source unit id", ErrInvalidBlock, index)
+			return fmt.Errorf("%w: parent draft at index %d has an empty source unit id", chunking.ErrInvalidBlock, index)
 		}
 	}
 	return nil
 }
 
-func generateChunkID(ctx context.Context, input StrategyInput, idInput IDInput) (string, error) {
+func generateChunkID(ctx context.Context, input chunking.StrategyInput, idInput chunking.IDInput) (string, error) {
 	id, err := input.IDGenerator.Generate(ctx, idInput)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrIDGenerationFailed, err)
+		return "", fmt.Errorf("%w: %w", chunking.ErrIDGenerationFailed, err)
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "", fmt.Errorf("%w: generator returned an empty id", ErrIDGenerationFailed)
+		return "", fmt.Errorf("%w: generator returned an empty id", chunking.ErrIDGenerationFailed)
 	}
 	return id, nil
 }
 
 func recordGeneratedID(seen map[string]struct{}, id string) error {
 	if _, exists := seen[id]; exists {
-		return fmt.Errorf("%w: chunk id %q", ErrDuplicateID, id)
+		return fmt.Errorf("%w: chunk id %q", chunking.ErrDuplicateID, id)
 	}
 	seen[id] = struct{}{}
 	return nil
 }
 
-func buildRelations(chunks []Chunk) []Relation {
-	relations := make([]Relation, 0, len(chunks)*2)
-	chunkByID := make(map[string]Chunk, len(chunks))
+func buildRelations(chunks []chunking.Chunk) []chunking.Relation {
+	relations := make([]chunking.Relation, 0, len(chunks)*2)
+	chunkByID := make(map[string]chunking.Chunk, len(chunks))
 	for _, chunk := range chunks {
 		chunkByID[chunk.ID] = chunk
 	}
 	for _, chunk := range chunks {
 		if chunk.ParentID != "" {
 			parent := chunkByID[chunk.ParentID]
-			relations = append(relations, Relation{
-				Type:      RelationTypeParentChild,
+			relations = append(relations, chunking.Relation{
+				Type:      chunking.RelationTypeParentChild,
 				FromID:    parent.ID,
 				ToID:      chunk.ID,
 				FromLevel: parent.Level,
@@ -245,8 +247,8 @@ func buildRelations(chunks []Chunk) []Relation {
 		}
 		if chunk.NextID != "" {
 			next := chunkByID[chunk.NextID]
-			relations = append(relations, Relation{
-				Type:      RelationTypePreviousNext,
+			relations = append(relations, chunking.Relation{
+				Type:      chunking.RelationTypePreviousNext,
 				FromID:    chunk.ID,
 				ToID:      next.ID,
 				FromLevel: chunk.Level,
@@ -254,8 +256,8 @@ func buildRelations(chunks []Chunk) []Relation {
 			})
 		}
 		for _, sourceUnitID := range chunk.SourceUnitIDs {
-			relations = append(relations, Relation{
-				Type:      RelationTypeSource,
+			relations = append(relations, chunking.Relation{
+				Type:      chunking.RelationTypeSource,
 				FromID:    chunk.ID,
 				ToID:      sourceUnitID,
 				FromLevel: chunk.Level,
@@ -266,4 +268,14 @@ func buildRelations(chunks []Chunk) []Relation {
 	return relations
 }
 
-var _ Strategy = (*ParentChildStrategy)(nil)
+func cloneBlocks(blocks []chunking.Block) []chunking.Block {
+	cloned := make([]chunking.Block, len(blocks))
+	for i := range blocks {
+		cloned[i] = blocks[i]
+		cloned[i].SourceUnitIDs = append([]string(nil), blocks[i].SourceUnitIDs...)
+		cloned[i].Metadata = metadatautil.Clone(blocks[i].Metadata)
+	}
+	return cloned
+}
+
+var _ chunking.Strategy = (*ParentChildStrategy)(nil)

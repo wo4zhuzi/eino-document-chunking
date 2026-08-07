@@ -62,3 +62,13 @@
 - 父 Chunk Metadata 不写空 `eino_chunking.parent_id`，子 Chunk 写入真实父 ID，可直接作为 Eino Parent Retriever 的 `ParentIDKey`。
 - 当前未实现 Tokenizer，`CharacterCount` 可用，`TokenCount` 默认是 0。
 - 未实现父级持久化、Embedding、Indexer、Retriever、Reranker 和其他 Chunk 策略，责任边界与 README 一致。
+
+## 包结构重构决策
+
+- 上一版把最小 API 误解为单包平铺，逻辑扩展点存在，但物理包边界不足。
+- 根包只保留跨策略稳定契约、Engine、Identity、Metadata 和校验。
+- 默认 Document Adapter 下沉到 `adapter` 包。
+- 父子实现整体下沉到 `strategy/parentchild`，未来其他策略与其并列。
+- Eino Transformer 投影下沉到 `einoadapter`，避免核心包绑定组件适配细节。
+- 通用文本切分和 Metadata 克隆下沉到 `internal`，不暴露为公共 API。
+- 不机械创建未使用的 registry/tokenizer 文件，继续遵循最小实现原则。

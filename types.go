@@ -6,12 +6,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// Profile identifies a reproducible chunking configuration.
-type Profile struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
 // Block is the format-neutral logical unit consumed by chunk strategies.
 type Block struct {
 	ID            string         `json:"id"`
@@ -109,22 +103,4 @@ type StrategyOutput struct {
 type Strategy interface {
 	Name() string
 	Chunk(ctx context.Context, input StrategyInput) (*StrategyOutput, error)
-}
-
-// IDInput contains the stable fields used to generate a chunk ID.
-type IDInput struct {
-	Profile       Profile
-	StrategyName  string
-	Kind          ChunkKind
-	Level         int
-	DocumentID    string
-	ParentID      string
-	Sequence      int
-	Content       string
-	SourceUnitIDs []string
-}
-
-// IDGenerator generates deterministic chunk IDs for a strategy invocation.
-type IDGenerator interface {
-	Generate(ctx context.Context, input IDInput) (string, error)
 }

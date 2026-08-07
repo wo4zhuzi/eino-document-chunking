@@ -1,9 +1,13 @@
-package chunking
+package parentchild
 
 import (
 	"context"
 	"fmt"
 	"strings"
+
+	chunking "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/textutil"
 )
 
 const DefaultMaxParentRunes = 2000
@@ -18,7 +22,7 @@ type ParentDraft struct {
 
 // ParentBuilder constructs bounded parent candidates from logical blocks.
 type ParentBuilder interface {
-	Build(ctx context.Context, blocks []Block) ([]ParentDraft, error)
+	Build(ctx context.Context, blocks []chunking.Block) ([]ParentDraft, error)
 }
 
 // BoundedParentBuilderConfig configures the default parent builder.
@@ -38,15 +42,15 @@ func NewBoundedParentBuilder(config BoundedParentBuilderConfig) (*BoundedParentB
 		maxRunes = DefaultMaxParentRunes
 	}
 	if maxRunes < 1 {
-		return nil, fmt.Errorf("%w: parent MaxRunes must be positive", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: parent MaxRunes must be positive", chunking.ErrInvalidConfig)
 	}
 	return &BoundedParentBuilder{maxRunes: maxRunes}, nil
 }
 
 // Build implements ParentBuilder.
-func (builder *BoundedParentBuilder) Build(ctx context.Context, blocks []Block) ([]ParentDraft, error) {
+func (builder *BoundedParentBuilder) Build(ctx context.Context, blocks []chunking.Block) ([]ParentDraft, error) {
 	if builder == nil || builder.maxRunes < 1 {
-		return nil, fmt.Errorf("%w: parent builder is unavailable", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: parent builder is unavailable", chunking.ErrInvalidConfig)
 	}
 	if err := contextError(ctx, "build parents"); err != nil {
 		return nil, err
@@ -56,7 +60,7 @@ func (builder *BoundedParentBuilder) Build(ctx context.Context, blocks []Block) 
 		if err := contextError(ctx, "build parents"); err != nil {
 			return nil, err
 		}
-		for _, content := range splitBoundedText(block.Content, builder.maxRunes) {
+		for _, content := range textutil.SplitBounded(block.Content, builder.maxRunes) {
 			if strings.TrimSpace(content) == "" {
 				continue
 			}
@@ -64,7 +68,7 @@ func (builder *BoundedParentBuilder) Build(ctx context.Context, blocks []Block) 
 				DocumentID:    block.DocumentID,
 				Content:       content,
 				SourceUnitIDs: append([]string(nil), block.SourceUnitIDs...),
-				Metadata:      cloneMetadata(block.Metadata),
+				Metadata:      metadatautil.Clone(block.Metadata),
 			})
 		}
 	}

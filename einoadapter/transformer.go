@@ -1,4 +1,4 @@
-package chunking
+package einoadapter
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 
 	einodocument "github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
+	chunking "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
 )
 
 // TransformerOutput explicitly selects which chunks an Eino Transformer returns.
@@ -24,19 +26,19 @@ type EinoTransformerConfig struct {
 
 // EinoTransformer adapts Engine to Eino's document.Transformer interface.
 type EinoTransformer struct {
-	engine *Engine
+	engine *chunking.Engine
 	output TransformerOutput
 }
 
 // NewEinoTransformer creates an adapter with an explicit output projection.
-func NewEinoTransformer(engine *Engine, config EinoTransformerConfig) (*EinoTransformer, error) {
+func NewEinoTransformer(engine *chunking.Engine, config EinoTransformerConfig) (*EinoTransformer, error) {
 	if engine == nil {
-		return nil, fmt.Errorf("%w: engine is required", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: engine is required", chunking.ErrInvalidConfig)
 	}
 	switch config.Output {
 	case TransformerOutputParents, TransformerOutputChildren, TransformerOutputAll:
 	default:
-		return nil, fmt.Errorf("%w: transformer output must be parents, children, or all", ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: transformer output must be parents, children, or all", chunking.ErrInvalidConfig)
 	}
 	return &EinoTransformer{engine: engine, output: config.Output}, nil
 }
@@ -48,7 +50,7 @@ func (transformer *EinoTransformer) Transform(
 	_ ...einodocument.TransformerOption,
 ) ([]*schema.Document, error) {
 	if transformer == nil || transformer.engine == nil {
-		return nil, ErrEngineUnavailable
+		return nil, chunking.ErrEngineUnavailable
 	}
 	result, err := transformer.engine.Chunk(ctx, documents)
 	if err != nil {
@@ -62,18 +64,18 @@ func (transformer *EinoTransformer) Transform(
 		output = append(output, &schema.Document{
 			ID:       chunk.ID,
 			Content:  chunk.Content,
-			MetaData: cloneMetadata(chunk.Metadata),
+			MetaData: metadatautil.Clone(chunk.Metadata),
 		})
 	}
 	return output, nil
 }
 
-func (transformer *EinoTransformer) selects(kind ChunkKind) bool {
+func (transformer *EinoTransformer) selects(kind chunking.ChunkKind) bool {
 	switch transformer.output {
 	case TransformerOutputParents:
-		return kind == ChunkKindParent
+		return kind == chunking.ChunkKindParent
 	case TransformerOutputChildren:
-		return kind == ChunkKindChild
+		return kind == chunking.ChunkKindChild
 	case TransformerOutputAll:
 		return true
 	default:

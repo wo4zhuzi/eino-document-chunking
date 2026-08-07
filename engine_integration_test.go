@@ -1,4 +1,4 @@
-package chunking
+package chunking_test
 
 import (
 	"context"
@@ -11,6 +11,10 @@ import (
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
+	. "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/adapter"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
+	"github.com/wo4zhuzi/eino-document-chunking/strategy/parentchild"
 )
 
 func TestNilBlankAndMixedInputs(t *testing.T) {
@@ -46,28 +50,28 @@ func TestNilBlankAndMixedInputs(t *testing.T) {
 }
 
 func TestInvalidConfigurationAndMetadataConflict(t *testing.T) {
-	strategy, err := NewParentChildStrategy(ParentChildConfig{})
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
 	tests := []EngineConfig{
 		{},
 		{Profile: Profile{Name: "name", Version: "v1"}, Strategy: strategy},
-		{Profile: Profile{Name: "name", Version: "v1"}, Adapter: NewDocumentAdapter()},
-		{Profile: Profile{Name: "name"}, Adapter: NewDocumentAdapter(), Strategy: strategy},
+		{Profile: Profile{Name: "name", Version: "v1"}, Adapter: adapter.NewDocumentAdapter()},
+		{Profile: Profile{Name: "name"}, Adapter: adapter.NewDocumentAdapter(), Strategy: strategy},
 	}
 	for index, config := range tests {
 		if _, err := NewEngine(config); err == nil {
 			t.Fatalf("NewEngine(config %d) error = nil", index)
 		}
 	}
-	if _, err := NewBoundedParentBuilder(BoundedParentBuilderConfig{MaxRunes: -1}); !errors.Is(err, ErrInvalidConfig) {
+	if _, err := parentchild.NewBoundedParentBuilder(parentchild.BoundedParentBuilderConfig{MaxRunes: -1}); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("NewBoundedParentBuilder() error = %v", err)
 	}
-	if _, err := NewBoundedTextSplitter(BoundedTextSplitterConfig{MaxRunes: -1}); !errors.Is(err, ErrInvalidConfig) {
+	if _, err := parentchild.NewBoundedTextSplitter(parentchild.BoundedTextSplitterConfig{MaxRunes: -1}); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("NewBoundedTextSplitter() error = %v", err)
 	}
-	if _, err := NewParentChildStrategy(ParentChildConfig{
+	if _, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{
 		ChildSplitter:    &emptySplitter{},
 		ChildTransformer: &identityTransformer{},
 	}); !errors.Is(err, ErrInvalidConfig) {
@@ -94,59 +98,59 @@ func TestDependencyErrorsAreWrapped(t *testing.T) {
 		t.Fatalf("adapter error = %v", err)
 	}
 
-	strategyEngine := newEngineForTest(t, NewDocumentAdapter(), &errorStrategy{err: sentinel}, nil)
+	strategyEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), &errorStrategy{err: sentinel}, nil)
 	if _, err := strategyEngine.Chunk(context.Background(), document); !errors.Is(err, ErrStrategyFailed) || !errors.Is(err, sentinel) {
 		t.Fatalf("strategy error = %v", err)
 	}
 
-	strategy, err := NewParentChildStrategy(ParentChildConfig{ParentBuilder: &errorParentBuilder{err: sentinel}})
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{ParentBuilder: &errorParentBuilder{err: sentinel}})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	parentEngine := newEngineForTest(t, NewDocumentAdapter(), strategy, nil)
+	parentEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), strategy, nil)
 	if _, err := parentEngine.Chunk(context.Background(), document); !errors.Is(err, ErrParentBuilderFailed) || !errors.Is(err, sentinel) {
 		t.Fatalf("parent builder error = %v", err)
 	}
 
-	strategy, err = NewParentChildStrategy(ParentChildConfig{ChildSplitter: &errorSplitter{err: sentinel}})
+	strategy, err = parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{ChildSplitter: &errorSplitter{err: sentinel}})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	splitterEngine := newEngineForTest(t, NewDocumentAdapter(), strategy, nil)
+	splitterEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), strategy, nil)
 	if _, err := splitterEngine.Chunk(context.Background(), document); !errors.Is(err, ErrSplitterFailed) || !errors.Is(err, sentinel) {
 		t.Fatalf("splitter error = %v", err)
 	}
 
-	strategy, err = NewParentChildStrategy(ParentChildConfig{})
+	strategy, err = parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	idEngine := newEngineForTest(t, NewDocumentAdapter(), strategy, &errorIDGenerator{err: sentinel})
+	idEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), strategy, &errorIDGenerator{err: sentinel})
 	if _, err := idEngine.Chunk(context.Background(), document); !errors.Is(err, ErrIDGenerationFailed) || !errors.Is(err, sentinel) {
 		t.Fatalf("id generator error = %v", err)
 	}
 }
 
 func TestDuplicateIDsInvalidRelationsAndNoChildren(t *testing.T) {
-	strategy, err := NewParentChildStrategy(ParentChildConfig{})
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	duplicateEngine := newEngineForTest(t, NewDocumentAdapter(), strategy, constantIDGenerator("duplicate"))
+	duplicateEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), strategy, constantIDGenerator("duplicate"))
 	if _, err := duplicateEngine.Chunk(context.Background(), []*schema.Document{{ID: "doc", Content: "content"}}); !errors.Is(err, ErrDuplicateID) {
 		t.Fatalf("duplicate id error = %v", err)
 	}
 
-	invalidEngine := newEngineForTest(t, NewDocumentAdapter(), &invalidRelationStrategy{}, nil)
+	invalidEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), &invalidRelationStrategy{}, nil)
 	if _, err := invalidEngine.Chunk(context.Background(), []*schema.Document{{ID: "doc", Content: "content"}}); !errors.Is(err, ErrInvalidRelation) {
 		t.Fatalf("invalid relation error = %v", err)
 	}
 
-	strategy, err = NewParentChildStrategy(ParentChildConfig{ChildSplitter: &emptySplitter{}})
+	strategy, err = parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{ChildSplitter: &emptySplitter{}})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	emptyEngine := newEngineForTest(t, NewDocumentAdapter(), strategy, nil)
+	emptyEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), strategy, nil)
 	if _, err := emptyEngine.Chunk(context.Background(), []*schema.Document{{ID: "doc", Content: "content"}}); !errors.Is(err, ErrNoValidChunks) {
 		t.Fatalf("empty splitter error = %v", err)
 	}
@@ -210,7 +214,7 @@ func TestConcurrentCallsAreStable(t *testing.T) {
 }
 
 func TestCustomStrategyRequiresNoEngineChanges(t *testing.T) {
-	engine := newEngineForTest(t, NewDocumentAdapter(), &customStrategy{}, nil)
+	engine := newEngineForTest(t, adapter.NewDocumentAdapter(), &customStrategy{}, nil)
 	result, err := engine.Chunk(context.Background(), []*schema.Document{
 		{ID: "one", Content: "first"},
 		{ID: "two", Content: "second"},
@@ -243,11 +247,11 @@ func TestEngineProtectsInputFromMutatingDependencies(t *testing.T) {
 		t.Fatalf("adapter mutated caller input: %#v", document)
 	}
 
-	strategy, err := NewParentChildStrategy(ParentChildConfig{ChildSplitter: &mutatingSplitter{}})
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{ChildSplitter: &mutatingSplitter{}})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	splitterEngine := newEngineForTest(t, NewDocumentAdapter(), strategy, nil)
+	splitterEngine := newEngineForTest(t, adapter.NewDocumentAdapter(), strategy, nil)
 	if _, err := splitterEngine.Chunk(context.Background(), []*schema.Document{document}); err != nil {
 		t.Fatalf("Chunk(mutating splitter) error = %v", err)
 	}
@@ -268,6 +272,26 @@ func newEngineForTest(t *testing.T, adapter FormatAdapter, strategy Strategy, ge
 		t.Fatalf("NewEngine() error = %v", err)
 	}
 	return engine
+}
+
+func newTestEngine(t *testing.T, parentRunes, childRunes int) *Engine {
+	t.Helper()
+	parentBuilder, err := parentchild.NewBoundedParentBuilder(parentchild.BoundedParentBuilderConfig{MaxRunes: parentRunes})
+	if err != nil {
+		t.Fatalf("NewBoundedParentBuilder() error = %v", err)
+	}
+	childSplitter, err := parentchild.NewBoundedTextSplitter(parentchild.BoundedTextSplitterConfig{MaxRunes: childRunes})
+	if err != nil {
+		t.Fatalf("NewBoundedTextSplitter() error = %v", err)
+	}
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{
+		ParentBuilder: parentBuilder,
+		ChildSplitter: childSplitter,
+	})
+	if err != nil {
+		t.Fatalf("NewParentChildStrategy() error = %v", err)
+	}
+	return newEngineForTest(t, adapter.NewDocumentAdapter(), strategy, nil)
 }
 
 type errorAdapter struct {
@@ -325,7 +349,7 @@ type errorParentBuilder struct {
 	err error
 }
 
-func (builder *errorParentBuilder) Build(context.Context, []Block) ([]ParentDraft, error) {
+func (builder *errorParentBuilder) Build(context.Context, []Block) ([]parentchild.ParentDraft, error) {
 	return nil, builder.err
 }
 
@@ -379,7 +403,7 @@ func (*invalidRelationStrategy) Chunk(_ context.Context, input StrategyInput) (*
 		Sequence:      1,
 		Metadata:      input.Blocks[0].Metadata,
 	}
-	return &StrategyOutput{Chunks: []Chunk{chunk}, Relations: buildRelations([]Chunk{chunk})}, nil
+	return &StrategyOutput{Chunks: []Chunk{chunk}, Relations: testBuildRelations([]Chunk{chunk})}, nil
 }
 
 type customStrategy struct{}
@@ -410,10 +434,32 @@ func (*customStrategy) Chunk(ctx context.Context, input StrategyInput) (*Strateg
 			Level:         0,
 			SourceUnitIDs: append([]string(nil), block.SourceUnitIDs...),
 			Sequence:      sequence,
-			Metadata:      cloneMetadata(block.Metadata),
+			Metadata:      metadatautil.Clone(block.Metadata),
 		})
 	}
-	return &StrategyOutput{Chunks: chunks, Relations: buildRelations(chunks)}, nil
+	return &StrategyOutput{Chunks: chunks, Relations: testBuildRelations(chunks)}, nil
+}
+
+func testBuildRelations(chunks []Chunk) []Relation {
+	relations := make([]Relation, 0, len(chunks)*2)
+	chunkByID := make(map[string]Chunk, len(chunks))
+	for _, chunk := range chunks {
+		chunkByID[chunk.ID] = chunk
+	}
+	for _, chunk := range chunks {
+		if chunk.ParentID != "" {
+			parent := chunkByID[chunk.ParentID]
+			relations = append(relations, Relation{Type: RelationTypeParentChild, FromID: parent.ID, ToID: chunk.ID, FromLevel: parent.Level, ToLevel: chunk.Level})
+		}
+		if chunk.NextID != "" {
+			next := chunkByID[chunk.NextID]
+			relations = append(relations, Relation{Type: RelationTypePreviousNext, FromID: chunk.ID, ToID: next.ID, FromLevel: chunk.Level, ToLevel: next.Level})
+		}
+		for _, sourceUnitID := range chunk.SourceUnitIDs {
+			relations = append(relations, Relation{Type: RelationTypeSource, FromID: chunk.ID, ToID: sourceUnitID, FromLevel: chunk.Level, ToLevel: -1})
+		}
+	}
+	return relations
 }
 
 type identityTransformer struct{}

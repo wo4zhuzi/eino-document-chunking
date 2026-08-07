@@ -14,6 +14,8 @@
 | 4. Eino 适配与示例 | 已完成 | 实现 Transformer 适配器和完全离线示例 |
 | 5. 测试与文档 | 已完成 | 完成需求覆盖测试和中文 README |
 | 6. 全量验证 | 已完成 | 执行 gofmt、go test、race、vet 并修复问题 |
+| 7. 包结构重构 | 进行中 | 根包只保留稳定契约和 Engine，具体 Adapter、父子 Strategy、Eino 适配与内部工具下沉到独立目录 |
+| 8. 重构回归验证 | 待开始 | 迁移测试、示例和 README，重新执行 gofmt、test、race、vet |
 
 ## 关键约束
 

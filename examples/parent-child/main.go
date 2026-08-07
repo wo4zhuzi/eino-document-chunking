@@ -8,22 +8,24 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 	chunking "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/adapter"
+	"github.com/wo4zhuzi/eino-document-chunking/strategy/parentchild"
 )
 
 func main() {
-	parentBuilder, err := chunking.NewBoundedParentBuilder(chunking.BoundedParentBuilderConfig{
+	parentBuilder, err := parentchild.NewBoundedParentBuilder(parentchild.BoundedParentBuilderConfig{
 		MaxRunes: 160,
 	})
 	if err != nil {
 		panic(fmt.Errorf("create parent builder: %w", err))
 	}
-	childSplitter, err := chunking.NewBoundedTextSplitter(chunking.BoundedTextSplitterConfig{
+	childSplitter, err := parentchild.NewBoundedTextSplitter(parentchild.BoundedTextSplitterConfig{
 		MaxRunes: 64,
 	})
 	if err != nil {
 		panic(fmt.Errorf("create child splitter: %w", err))
 	}
-	strategy, err := chunking.NewParentChildStrategy(chunking.ParentChildConfig{
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{
 		ParentBuilder: parentBuilder,
 		ChildSplitter: childSplitter,
 	})
@@ -32,7 +34,7 @@ func main() {
 	}
 	engine, err := chunking.NewEngine(chunking.EngineConfig{
 		Profile:  chunking.Profile{Name: "offline-demo", Version: "v1"},
-		Adapter:  chunking.NewDocumentAdapter(),
+		Adapter:  adapter.NewDocumentAdapter(),
 		Strategy: strategy,
 	})
 	if err != nil {

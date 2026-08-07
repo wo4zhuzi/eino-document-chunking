@@ -1,4 +1,4 @@
-package chunking
+package einoadapter
 
 import (
 	"context"
@@ -7,6 +7,10 @@ import (
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
+	. "github.com/wo4zhuzi/eino-document-chunking"
+	"github.com/wo4zhuzi/eino-document-chunking/adapter"
+	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
+	"github.com/wo4zhuzi/eino-document-chunking/strategy/parentchild"
 )
 
 func TestEinoTransformerRequiresExplicitOutputAndProjectsChunks(t *testing.T) {
@@ -62,13 +66,13 @@ func TestEinoTransformerRequiresExplicitOutputAndProjectsChunks(t *testing.T) {
 }
 
 func TestParentChildAcceptsEinoChildTransformer(t *testing.T) {
-	strategy, err := NewParentChildStrategy(ParentChildConfig{
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{
 		ChildTransformer: &addingTransformer{},
 	})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	engine := newEngineForTest(t, NewDocumentAdapter(), strategy, nil)
+	engine := newEngineForTest(t, adapter.NewDocumentAdapter(), strategy)
 	result, err := engine.Chunk(context.Background(), []*schema.Document{{
 		ID:       "doc",
 		Content:  "content",
@@ -92,13 +96,13 @@ func TestParentChildAcceptsEinoChildTransformer(t *testing.T) {
 	}
 
 	sentinel := errors.New("transformer failed")
-	strategy, err = NewParentChildStrategy(ParentChildConfig{
+	strategy, err = parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{
 		ChildTransformer: &failingTransformer{err: sentinel},
 	})
 	if err != nil {
 		t.Fatalf("NewParentChildStrategy() error = %v", err)
 	}
-	engine = newEngineForTest(t, NewDocumentAdapter(), strategy, nil)
+	engine = newEngineForTest(t, adapter.NewDocumentAdapter(), strategy)
 	if _, err := engine.Chunk(context.Background(), []*schema.Document{{ID: "doc", Content: "content"}}); !errors.Is(err, ErrSplitterFailed) || !errors.Is(err, sentinel) {
 		t.Fatalf("transformer error = %v", err)
 	}
@@ -111,13 +115,46 @@ func (*addingTransformer) Transform(
 	documents []*schema.Document,
 	_ ...document.TransformerOption,
 ) ([]*schema.Document, error) {
-	metadata := cloneMetadata(documents[0].MetaData)
+	metadata := metadatautil.Clone(documents[0].MetaData)
 	metadata["transformer"] = "added"
 	return []*schema.Document{{
 		ID:       "ignored-by-chunking",
 		Content:  documents[0].Content,
 		MetaData: metadata,
 	}}, nil
+}
+
+func newTestEngine(t *testing.T, parentRunes, childRunes int) *Engine {
+	t.Helper()
+	parentBuilder, err := parentchild.NewBoundedParentBuilder(parentchild.BoundedParentBuilderConfig{MaxRunes: parentRunes})
+	if err != nil {
+		t.Fatalf("NewBoundedParentBuilder() error = %v", err)
+	}
+	childSplitter, err := parentchild.NewBoundedTextSplitter(parentchild.BoundedTextSplitterConfig{MaxRunes: childRunes})
+	if err != nil {
+		t.Fatalf("NewBoundedTextSplitter() error = %v", err)
+	}
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{
+		ParentBuilder: parentBuilder,
+		ChildSplitter: childSplitter,
+	})
+	if err != nil {
+		t.Fatalf("NewParentChildStrategy() error = %v", err)
+	}
+	return newEngineForTest(t, adapter.NewDocumentAdapter(), strategy)
+}
+
+func newEngineForTest(t *testing.T, formatAdapter FormatAdapter, strategy Strategy) *Engine {
+	t.Helper()
+	engine, err := NewEngine(EngineConfig{
+		Profile:  Profile{Name: "test", Version: "v1"},
+		Adapter:  formatAdapter,
+		Strategy: strategy,
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	return engine
 }
 
 type failingTransformer struct {
