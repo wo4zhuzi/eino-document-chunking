@@ -205,7 +205,7 @@ Structure-aware Chunk 消费上游 Parser 已经拆分好的标题、段落、�
 go run ./examples/structure-aware
 ```
 
-示例演示如何注入 `StructureResolver`，以及如何从标准 Document Metadata 构建标题和段落结构。
+示例内置一个最小 Eino Markdown Parser，演示如何直接消费 Parser 输出，并通过 `StructureResolver` 将 Parser Metadata 映射为标题和段落结构。
 
 ## 快速开始
 
