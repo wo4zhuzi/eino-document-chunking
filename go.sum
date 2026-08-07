@@ -126,8 +126,8 @@ github.com/twitchyliquid64/golang-asm v0.15.1 h1:SU5vSMR7hnwNxj24w34ZyCi/FmDZTkS
 github.com/twitchyliquid64/golang-asm v0.15.1/go.mod h1:a1lVb/DtPvCB8fslRZhAngC2+aY1QWCk3Cedj/Gdt08=
 github.com/wk8/go-ordered-map/v2 v2.1.8 h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=
 github.com/wk8/go-ordered-map/v2 v2.1.8/go.mod h1:5nJHM5DyteebpVlHnWMV0rPz6Zp7+xBAnxjb1X5vnTw=
-github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260806102959-f0ac8222e281 h1:DgVikl6dmcqw4tkNMr/DoneNiPRPt7IDWIXDzSi8ROw=
-github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260806102959-f0ac8222e281/go.mod h1:S4XpsjibFFsuvPfs0YNYIXBmkmBt/ngYGG/5rfEOWAA=
+github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260807153652-b550f5826eb1 h1:jNLtIojx5IeooE7eaMyswVQH4Yw9+Ry04t32Lu6cs7g=
+github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260807153652-b550f5826eb1/go.mod h1:S4XpsjibFFsuvPfs0YNYIXBmkmBt/ngYGG/5rfEOWAA=
 github.com/x-cray/logrus-prefixed-formatter v0.5.2 h1:00txxvfBM9muc0jiLIEAkAcIMJzfthRT6usrui8uGmg=
 github.com/x-cray/logrus-prefixed-formatter v0.5.2/go.mod h1:2duySbKsL6M18s5GU7VPsoEPHyzalCE06qoARUCeBBE=
 github.com/xuri/efp v0.0.0-20240408161823-9ad904a10d6d h1:llb0neMWDQe87IzJLS4Ci7psK/lVsjIS2otl+1WyRyY=

@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/cloudwego/eino v0.9.12
-	github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260806102959-f0ac8222e281
+	github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260807153652-b550f5826eb1
 )
 
 require (

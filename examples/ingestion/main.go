@@ -8,6 +8,7 @@ import (
 
 	chunking "github.com/wo4zhuzi/eino-document-chunking"
 	"github.com/wo4zhuzi/eino-document-chunking/adapter"
+	"github.com/wo4zhuzi/eino-document-chunking/strategy/parentchild"
 	"github.com/wo4zhuzi/eino-document-chunking/strategy/structureaware"
 	ingestion "github.com/wo4zhuzi/eino-document-ingestion"
 )
@@ -21,27 +22,10 @@ func main() {
 
 func run() error {
 	if len(os.Args) != 2 {
-		return fmt.Errorf("用法: go run ./examples/structure-aware <本地 .outline 文件或 HTTP/HTTPS URL>")
+		return fmt.Errorf("用法: go run ./examples/ingestion <本地文件或 HTTP/HTTPS URL>")
 	}
 	ctx := context.Background()
-	registry := ingestion.NewRegistry()
-	if err := registry.Register(ingestion.Format{
-		Extension:         outlineExtension,
-		MIMEType:          "text/plain",
-		DetectedMIMETypes: []string{"text/plain"},
-		ParserInfo: ingestion.ParserInfo{
-			Name:    "example_outline",
-			Version: "v1",
-			Output: ingestion.ParserOutput{
-				Granularity: ingestion.GranularityBlock,
-				Structured:  true,
-			},
-		},
-		Parser: outlineParser{},
-	}); err != nil {
-		return fmt.Errorf("注册结构化大纲 Parser: %w", err)
-	}
-	ingestor, err := ingestion.New(ctx, ingestion.Config{Registry: registry})
+	ingestor, err := ingestion.New(ctx, ingestion.Config{})
 	if err != nil {
 		return fmt.Errorf("创建文档摄取器: %w", err)
 	}
@@ -49,25 +33,17 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("摄取文档: %w", err)
 	}
-	if !ingested.Parser.Output.Structured || ingested.Parser.Output.Granularity != ingestion.GranularityBlock {
-		return fmt.Errorf(
-			"Parser %q 输出不支持 Structure-aware: granularity=%q structured=%t",
-			ingested.Parser.Name,
-			ingested.Parser.Output.Granularity,
-			ingested.Parser.Output.Structured,
-		)
-	}
 
 	formatAdapter, err := adapter.NewIngestionAdapter(ingested.Parser)
 	if err != nil {
 		return fmt.Errorf("创建 ingestion adapter: %w", err)
 	}
-	strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{})
+	strategy, err := strategyFor(ingested.Parser)
 	if err != nil {
-		return fmt.Errorf("创建 Structure-aware 策略: %w", err)
+		return err
 	}
 	engine, err := chunking.NewEngine(chunking.EngineConfig{
-		Profile:  chunking.Profile{Name: "ingestion-structure-aware", Version: "v1"},
+		Profile:  chunking.Profile{Name: "ingestion-auto", Version: "v1"},
 		Adapter:  formatAdapter,
 		Strategy: strategy,
 	})
@@ -85,4 +61,19 @@ func run() error {
 		return fmt.Errorf("输出结果: %w", err)
 	}
 	return nil
+}
+
+func strategyFor(info ingestion.ParserInfo) (chunking.Strategy, error) {
+	if info.Output.Structured {
+		strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{})
+		if err != nil {
+			return nil, fmt.Errorf("创建 Structure-aware 策略: %w", err)
+		}
+		return strategy, nil
+	}
+	strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfig{})
+	if err != nil {
+		return nil, fmt.Errorf("创建 Parent-child 策略: %w", err)
+	}
+	return strategy, nil
 }

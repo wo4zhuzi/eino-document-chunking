@@ -19,14 +19,6 @@ import (
 	ingestion "github.com/wo4zhuzi/eino-document-ingestion"
 )
 
-const (
-	metadataStructureKind     = "test.structure.kind"
-	metadataStructureDepth    = "test.structure.depth"
-	metadataStructureParentID = "test.structure.parent_id"
-	metadataStructurePath     = "test.structure.path"
-	metadataStructureBoundary = "test.structure.boundary"
-)
-
 func TestIngestionLoaderParserWithChunkStrategies(t *testing.T) {
 	ctx := context.Background()
 	sourceURI := writeMarkdownFixture(t)
@@ -48,13 +40,13 @@ func TestIngestionLoaderParserWithChunkStrategies(t *testing.T) {
 		}
 	}
 
-	parentChildResult, err := newParentChildEngine(t).Chunk(ctx, ingested.Documents)
+	parentChildResult, err := newParentChildEngine(t, ingested.Parser).Chunk(ctx, ingested.Documents)
 	if err != nil {
 		t.Fatalf("parent-child Chunk() error = %v", err)
 	}
 	assertParentChildResult(t, parentChildResult, sourceURI)
 
-	structureResult, err := newStructureAwareEngine(t).Chunk(ctx, ingested.Documents)
+	structureResult, err := newStructureAwareEngine(t, ingested.Parser).Chunk(ctx, ingested.Documents)
 	if err != nil {
 		t.Fatalf("structure-aware Chunk() error = %v", err)
 	}
@@ -71,6 +63,10 @@ func newMarkdownIngestor(t *testing.T, ctx context.Context) *ingestion.Ingestor 
 		ParserInfo: ingestion.ParserInfo{
 			Name:    "test_structured_markdown",
 			Version: "v1",
+			Output: ingestion.ParserOutput{
+				Granularity: ingestion.GranularityBlock,
+				Structured:  true,
+			},
 		},
 		Parser: headingMarkdownParser{},
 	})
@@ -87,8 +83,12 @@ func newMarkdownIngestor(t *testing.T, ctx context.Context) *ingestion.Ingestor 
 	return ingestor
 }
 
-func newParentChildEngine(t *testing.T) *chunking.Engine {
+func newParentChildEngine(t *testing.T, parserInfo ingestion.ParserInfo) *chunking.Engine {
 	t.Helper()
+	formatAdapter, err := adapter.NewIngestionAdapter(parserInfo)
+	if err != nil {
+		t.Fatalf("NewIngestionAdapter() error = %v", err)
+	}
 	parentBuilder, err := parentchild.NewBoundedParentBuilder(parentchild.BoundedParentBuilderConfig{
 		MaxRunes: 200,
 	})
@@ -110,7 +110,7 @@ func newParentChildEngine(t *testing.T) *chunking.Engine {
 	}
 	engine, err := chunking.NewEngine(chunking.EngineConfig{
 		Profile:  chunking.Profile{Name: "ingestion-parent-child", Version: "v1"},
-		Adapter:  adapter.NewDocumentAdapter(),
+		Adapter:  formatAdapter,
 		Strategy: strategy,
 	})
 	if err != nil {
@@ -119,13 +119,11 @@ func newParentChildEngine(t *testing.T) *chunking.Engine {
 	return engine
 }
 
-func newStructureAwareEngine(t *testing.T) *chunking.Engine {
+func newStructureAwareEngine(t *testing.T, parserInfo ingestion.ParserInfo) *chunking.Engine {
 	t.Helper()
-	formatAdapter, err := adapter.NewStructuredDocumentAdapter(adapter.StructuredDocumentAdapterConfig{
-		Resolver: adapter.StructureResolverFunc(resolveDocumentStructure),
-	})
+	formatAdapter, err := adapter.NewIngestionAdapter(parserInfo)
 	if err != nil {
-		t.Fatalf("NewStructuredDocumentAdapter() error = %v", err)
+		t.Fatalf("NewIngestionAdapter() error = %v", err)
 	}
 	strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{
 		MaxRunes:       200,
@@ -212,24 +210,6 @@ func assertStructureAwareResult(t *testing.T, result *chunking.Result, sourceURI
 	}
 }
 
-func resolveDocumentStructure(_ context.Context, document *schema.Document) (*chunking.BlockStructure, error) {
-	kind, kindOK := document.MetaData[metadataStructureKind].(string)
-	depth, depthOK := document.MetaData[metadataStructureDepth].(int)
-	path, pathOK := document.MetaData[metadataStructurePath].([]string)
-	if !kindOK || !depthOK || !pathOK {
-		return nil, fmt.Errorf("document %q has incomplete structure metadata", document.ID)
-	}
-	parentID, _ := document.MetaData[metadataStructureParentID].(string)
-	boundary, _ := document.MetaData[metadataStructureBoundary].(string)
-	return &chunking.BlockStructure{
-		Kind:     chunking.BlockKind(kind),
-		Depth:    depth,
-		ParentID: parentID,
-		Path:     append([]string(nil), path...),
-		Boundary: chunking.BlockBoundary(boundary),
-	}, nil
-}
-
 type headingMarkdownParser struct{}
 
 func (headingMarkdownParser) Parse(
@@ -262,21 +242,21 @@ func (headingMarkdownParser) Parse(
 			}
 			headingID = unitID
 			path = []string{title}
-			metadata[metadataStructureKind] = string(chunking.BlockKindHeading)
-			metadata[metadataStructureDepth] = 0
-			metadata[metadataStructurePath] = append([]string(nil), path...)
-			metadata[metadataStructureBoundary] = string(chunking.BlockBoundaryHard)
+			metadata[ingestion.MetadataStructureKind] = string(chunking.BlockKindHeading)
+			metadata[ingestion.MetadataStructureDepth] = 0
+			metadata[ingestion.MetadataStructurePath] = append([]string(nil), path...)
+			metadata[ingestion.MetadataStructureBoundary] = string(chunking.BlockBoundaryHard)
 			documents = append(documents, &schema.Document{ID: unitID, Content: title, MetaData: metadata})
 			continue
 		}
 		if headingID == "" {
 			return nil, fmt.Errorf("paragraph appears before the first heading")
 		}
-		metadata[metadataStructureKind] = string(chunking.BlockKindParagraph)
-		metadata[metadataStructureDepth] = 1
-		metadata[metadataStructureParentID] = headingID
-		metadata[metadataStructurePath] = append([]string(nil), path...)
-		metadata[metadataStructureBoundary] = string(chunking.BlockBoundaryNone)
+		metadata[ingestion.MetadataStructureKind] = string(chunking.BlockKindParagraph)
+		metadata[ingestion.MetadataStructureDepth] = 1
+		metadata[ingestion.MetadataStructureParentID] = headingID
+		metadata[ingestion.MetadataStructurePath] = append([]string(nil), path...)
+		metadata[ingestion.MetadataStructureBoundary] = string(chunking.BlockBoundaryNone)
 		documents = append(documents, &schema.Document{ID: unitID, Content: line, MetaData: metadata})
 	}
 	if len(documents) == 0 {
