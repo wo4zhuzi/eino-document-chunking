@@ -114,6 +114,10 @@ eino-document-chunking/
 │   │   └── Engine -> Eino document.Transformer 输出投影
 │   └── transformer_test.go
 │
+├── integration/
+│   └── ingestion_pipeline_test.go
+│       └── ingestion FileLoader/Parser -> 父子与 Structure-aware 集成测试
+│
 ├── internal/
 │   ├── metadatautil/
 │   │   └── Metadata 复制与保留式合并
@@ -291,6 +295,19 @@ if err != nil {
 
 本项目不会读取 `SourceInfo` 或重新判断格式。PDF 页码、DOCX Section、XLSX Sheet/Row、FileLoader `_source` 等原有 Metadata 会保留到父子 Chunk。
 
+仓库提供了一条完整的离线集成测试：测试先通过 ingestion 的默认 Eino FileLoader 读取临时 Markdown，并由注册到 ingestion Registry 的测试 Parser 输出标题和段落结构单元；同一份 `ingested.Documents` 随后分别进入父子策略和 Structure-aware 策略：
+
+```text
+Markdown 文件
+    -> eino-document-ingestion FileLoader
+    -> 已注册的结构化 Markdown Parser
+    -> []*schema.Document
+       |-> DocumentAdapter -> ParentChildStrategy
+       `-> StructuredDocumentAdapter -> StructureAwareStrategy
+```
+
+该测试 Parser 只用于验证 Loader、Parser 与 Chunking 的职责衔接，不是本项目提供的生产 Markdown Parser。生产环境应由 ingestion 注册的实际 Parser 产出结构单元及 Metadata，再由 `StructureResolver` 映射成 `BlockStructure`。
+
 ## Eino Transformer 适配
 
 核心 API `Engine.Chunk` 始终返回完整 Result。接入 Eino Graph 时，通过构造参数显式选择输出：
@@ -397,7 +414,8 @@ Loader / Parser / eino-document-ingestion
 默认测试完全离线：
 
 ```bash
-gofmt -w *.go adapter/*.go strategy/parentchild/*.go einoadapter/*.go internal/*/*.go examples/parent-child/*.go
+gofmt -w *.go adapter/*.go strategy/parentchild/*.go strategy/structureaware/*.go einoadapter/*.go internal/*/*.go integration/*.go examples/*/*.go
+go test ./integration -run TestIngestionLoaderParserWithChunkStrategies -v -count=1
 go test ./...
 go test -race ./...
 go vet ./...
@@ -405,7 +423,7 @@ go vet ./...
 
 预期结果：所有包测试通过，race detector 无数据竞争，`go vet` 无诊断。
 
-测试覆盖单/多文档、父子与相邻关系、结构边界和路径、原子块超限、稳定 ID、Metadata 和输入不可变、空输入、非法配置、依赖错误、重复 ID、非法关系、Context 取消/超时、并发调用、Eino Transformer，以及无需修改 Engine 的自定义 Strategy。
+测试覆盖 ingestion Loader/Parser 集成、单/多文档、父子与相邻关系、结构边界和路径、原子块超限、稳定 ID、Metadata 和输入不可变、空输入、非法配置、依赖错误、重复 ID、非法关系、Context 取消/超时、并发调用、Eino Transformer，以及无需修改 Engine 的自定义 Strategy。
 
 ## 已知限制
 
