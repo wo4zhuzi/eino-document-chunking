@@ -206,6 +206,39 @@ Structure-aware Chunk 消费上游 Parser 已经拆分好的标题、段落、�
 - 同文档 Chunk 建立 Previous/Next Relation，每个 Chunk 建立 Source Relation。
 - 缺少结构信息返回 `ErrStructureRequired`，不会静默退化为普通文本切分。
 
+### Structure-aware 生产配置建议
+
+`MaxRunes` 和 `MinRunes` 按 Unicode 字符计数，不等同于模型 Token 数。零值配置下，`MaxRunes` 默认是 `1000`，`MinRunes` 默认是 `MaxRunes / 2`。生产环境应根据语料语言、Embedding 模型 Tokenizer 和检索粒度通过抽样验证确定，不能只按模型最大上下文设置。
+
+可使用以下范围作为初始基线：
+
+| 语料类型 | `MaxRunes` | `MinRunes` |
+|---|---:|---:|
+| 中文知识库 | `1200-1800` | `400-600` |
+| 中英混合文档 | `1800-2500` | `600-800` |
+| 英文技术文档 | `2500-4000` | `800-1200` |
+
+中英混合知识库可以从以下配置开始：
+
+```go
+strategy, err := structureaware.NewStructureAwareStrategy(
+	structureaware.StructureAwareConfig{
+		MaxRunes:       1800,
+		MinRunes:       600,
+		HeadingContext: structureaware.HeadingContextMetadataOnly,
+	},
+)
+if err != nil {
+	return fmt.Errorf("创建 Structure-aware 策略: %w", err)
+}
+```
+
+建议使用目标 Embedding 模型的 Tokenizer 对生产语料抽样，优先把单个 Chunk 控制在约 `400-800 tokens`，同时确保 Chunk Token 数与附加 Metadata 不超过模型输入限制。上线后应持续观察 Chunk 大小的 P95/P99、原子块超限率和实际召回效果。
+
+`code`、`code_block` 和 `table` 是原子块。原子块超过 `MaxRunes` 且未配置 `OversizeSplitter` 时会返回 `ErrOversizeBlock`，不会退化为普通文本硬切。生产环境不建议为了少数超大代码块持续增大所有 Chunk 的上限，应优先提供能够保留代码围栏、表格行列或其他结构语义的 `OversizeSplitter`。
+
+如果只是直接运行较大的 Markdown 文件进行验证，例如文档包含约 `2000-3000` 字符的围栏代码块，可以暂时将 `MaxRunes` 设置为 `3000` 或更高；该值只适合验证，不应直接作为所有生产语料的默认配置。
+
 使用独立结构化 Markdown Parser 的真实输入示例：
 
 ```bash

@@ -58,6 +58,7 @@ func run() error {
 		return fmt.Errorf("创建 ingestion adapter: %w", err)
 	}
 	strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{
+		MaxRunes:       3000,
 		HeadingContext: structureaware.HeadingContextMetadataOnly,
 	})
 	if err != nil {
