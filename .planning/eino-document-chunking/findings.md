@@ -82,3 +82,14 @@
 - 扁平 Structure Chunk 的 `Level` 固定为 0；原始结构深度写入 `eino_chunking.structure.depth`，保持全局相邻关系的同层约束。
 - 代码和表格视为原子块；超限时交给可注入 OversizeSplitter，没有可用 Splitter 时明确报错。
 - 缺少结构信息不静默退化，返回明确错误；由 Structured Adapter 显式把无特殊结构的单元标记为 `text`。
+
+## 独立结构化 Parser 接入
+
+- `eino-document-parser-structured/markdown` 通过 `markdown.ParserInfo()` 和 `markdown.New()` 提供真实结构化 Markdown Parser。
+- 应先调用 `ingestion.NewDefaultRegistry(ctx)`，再用 `Registry.ReplaceParser(ingestion.ExtensionMarkdown, ...)` 替换默认 Markdown Parser，最后创建 Ingestor；Registry 会在创建 Ingestor 时复制快照。
+- Parser 固定声明 `structured_markdown@v0.1.0`、`block + structured=true`，结构路径按 Document ID 表达父子前缀，不是标题文本路径。
+- 当前 Chunking 默认将结构路径作为可选正文前缀；真实 Parser 的路径是 ID，因此示例应显式使用 `HeadingContextMetadataOnly`，避免将哈希 ID 写入 Chunk 正文。
+- Parser 输出的代码类型为 `code_block`，当前 Chunking 仅把 `code` 和 `table` 视为原子块；需兼容 `code_block`，否则超长围栏代码会被普通文本逻辑拆分。
+- Parser 依赖 ingestion `v0.0.0-20260808020154-7cc1616a8a0f`，接入后 Go MVS 会将本仓库 ingestion 依赖升级到该兼容版本。
+- 真实示例运行输出 9 个结构 Chunk，正文未出现结构 ID 前缀，最后一个围栏代码块保留为单个 `code_block` Chunk。
+- 独立 Parser 的每个 block path 都包含自身 ID，因此当前策略会按 block 生成独立 Chunk；这是对上游结构边界的严格保留，不在本次改动中引入额外 path 归一化或章节级重组。

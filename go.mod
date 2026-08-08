@@ -4,7 +4,8 @@ go 1.26.0
 
 require (
 	github.com/cloudwego/eino v0.9.12
-	github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260807153652-b550f5826eb1
+	github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260808020154-7cc1616a8a0f
+	github.com/wo4zhuzi/eino-document-parser-structured v0.0.0-20260808024546-02602d613c64
 )
 
 require (
@@ -44,6 +45,7 @@ require (
 	github.com/xuri/excelize/v2 v2.9.0 // indirect
 	github.com/xuri/nfp v0.0.0-20240318013403-ab9948c2c4a7 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
+	github.com/yuin/goldmark v1.8.5 // indirect
 	golang.org/x/arch v0.11.0 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect

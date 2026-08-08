@@ -19,6 +19,7 @@
 | 9. 结构感知契约 | 已完成 | Block 可选类型安全结构信息与 StructuredDocumentAdapter 已完成 |
 | 10. 结构感知策略 | 已完成 | 扁平 Structure-aware Strategy、稳定关系、错误处理和离线测试已完成 |
 | 11. 文档与全量验证 | 已完成 | README、离线示例、gofmt、test、race、vet 全部完成 |
+| 12. 独立结构化 Parser 接入 | 已完成 | 使用 eino-document-parser-structured 替换手写示例 Parser，并补齐真实集成测试与兼容性修复 |
 
 ## 关键约束
 
@@ -28,6 +29,7 @@
 - 格式适配与 Chunk 策略正交，避免格式和策略耦合类型。
 - 不修改调用方输入对象、Metadata 或切片。
 - 单元测试完全离线。
+- 结构感知示例必须消费独立 Parser 的真实公开 API，不再内嵌格式解析实现。
 
 ## 遇到的错误
 
@@ -37,3 +39,5 @@
 | 离线 `go mod tidy` 仍尝试访问 `sum.golang.org` | 1 | 增加 `GOSUMDB=off`，模块内容继续从本机只读下载缓存获取 |
 | Structure Chunk 使用结构深度作为 Level 导致跨深度相邻关系校验失败 | 1 | 扁平策略统一使用 `Chunk.Level=0`，结构深度保存在专用 Metadata |
 | `go doc` 同时传入两个完整符号路径导致参数被解析为包名 | 1 | 分别对 Adapter 和 Strategy 的公开符号执行 `go doc` |
+| 沙箱内查询新 Go 模块时 DNS 不可用 | 1 | 经用户授权联网读取模块版本并下载源码；后续构建使用本机模块缓存 |
+| Coze CLI 认证检查受网络限制且用户明确不需要 Coze CLI | 1 | 停止 Coze CLI 路径，全部改为当前仓库本地实现与验证 |

@@ -28,7 +28,8 @@
 
 - Go：`1.26.x`，模块声明为 `go 1.26.0`。
 - CloudWeGo Eino：`v0.9.12`。
-- 摄取组件：`github.com/wo4zhuzi/eino-document-ingestion@v0.0.0-20260807153652-b550f5826eb1`。
+- 摄取组件：`github.com/wo4zhuzi/eino-document-ingestion@v0.0.0-20260808020154-7cc1616a8a0f`。
+- 结构化 Parser：`github.com/wo4zhuzi/eino-document-parser-structured@v0.0.0-20260808024546-02602d613c64`。
 
 根包保持独立；`adapter.IngestionAdapter` 负责消费摄取组件的标准输出契约。
 
@@ -131,7 +132,8 @@ eino-document-chunking/
 │   ├── parent-child/
 │   │   └── main.go              # ingestion -> Parent-child 示例
 │   ├── structure-aware/
-│   │   └── main.go              # 严格消费 Structured block 输出
+│   │   ├── main.go              # 结构化 Markdown Parser -> Structure-aware
+│   │   └── example.md           # 可直接运行的 Markdown 输入
 │   └── ingestion/
 │       └── main.go              # 按 Parser 输出能力自动选择策略
 │
@@ -185,10 +187,10 @@ Structure-aware Chunk 消费上游 Parser 已经拆分好的标题、段落、�
 
 `BlockStructure` 包含：
 
-- `Kind`：`text`、`heading`、`paragraph`、`list_item`、`code`、`table`、`quote` 或调用方扩展类型。
+- `Kind`：`text`、`heading`、`paragraph`、`list_item`、`code`、`code_block`、`table`、`quote` 或调用方扩展类型。
 - `Depth`：原始逻辑结构深度。
 - `ParentID`：可选的结构父 Block ID。
-- `Path`：标题或章节路径。
+- `Path`：结构路径。`eino-document-parser-structured` 使用从根到当前 block 的 Document ID 路径；自定义 Resolver 也可以提供可读的标题或章节路径。
 - `Boundary`：无边界、软边界或硬边界。
 
 默认策略行为：
@@ -197,20 +199,28 @@ Structure-aware Chunk 消费上游 Parser 已经拆分好的标题、段落、�
 - Heading 开始新的结构 Chunk；不同结构路径不会合并。
 - 软边界在当前 Chunk 达到 `MinRunes` 后优先切分。
 - 相邻兼容 Block 在 `MaxRunes` 内合并。
-- 标题路径默认写入 Chunk 内容和 Metadata；可显式选择仅写 Metadata。
+- 结构路径默认写入 Chunk 内容和 Metadata；当上游 path 是结构 ID 时，应使用 `HeadingContextMetadataOnly`，避免把 ID 前缀写入正文。
 - 普通超长文本按稳定自然边界切分。
-- Code 和 Table 作为原子块，超限时必须提供 `OversizeSplitter`，否则返回 `ErrOversizeBlock`。
+- `code`、`code_block` 和 `table` 作为原子块，超限时必须提供 `OversizeSplitter`，否则返回 `ErrOversizeBlock`。
 - 输出是扁平 `structure` Chunk，`Level` 固定为 `0`；原始结构深度保存在 `eino_chunking.structure.depth`。
 - 同文档 Chunk 建立 Previous/Next Relation，每个 Chunk 建立 Source Relation。
 - 缺少结构信息返回 `ErrStructureRequired`，不会静默退化为普通文本切分。
 
-真实 ingestion 输入示例：
+使用独立结构化 Markdown Parser 的真实输入示例：
+
+```bash
+go run ./examples/structure-aware ./examples/structure-aware/example.md
+```
+
+示例先通过 `ingestion.NewDefaultRegistry` 创建默认 Registry，再使用 `markdown.ParserInfo()` 和 `markdown.New()` 替换默认 Markdown Parser，最后创建 Ingestor。这个顺序不能颠倒，因为 Ingestor 会复制 Registry 快照。示例不手工创建 Document 或结构 Metadata，并显式使用 `HeadingContextMetadataOnly` 消费 Parser 的结构 ID path。
+
+通用自动选择示例仍可用于默认 Parser：
 
 ```bash
 go run ./examples/ingestion <本地文件或 HTTP/HTTPS URL>
 ```
 
-示例不创建 Document 或结构 Metadata，直接调用 ingestion。`Structured=false` 时选择 Parent-child；只有 `Structured=true` 时才选择 Structure-aware。
+`Structured=false` 时选择 Parent-child；只有 Parser 声明 `Structured=true` 时才选择 Structure-aware。
 
 ## 快速开始
 
@@ -267,10 +277,10 @@ func main() {
 ```bash
 go run ./examples/parent-child ./documents/guide.pdf
 go run ./examples/ingestion ./documents/guide.pdf
-go run ./examples/structure-aware ./examples/structure-aware/example.outline
+go run ./examples/structure-aware ./examples/structure-aware/example.md
 ```
 
-Structure-aware 示例注册了一个只处理 `.outline` 的结构化大纲 Parser，并直接摄取仓库内的示例文件；也可以传入以 `.outline` 结尾的 HTTP/HTTPS URL。Parser 声明 `Structured=true` 且粒度为 `block`，解析标题层级和段落后输出 ingestion 标准结构 Metadata，不由 Chunking 示例手工组装 Document。成功输出的 JSON 包含 `profile`、`adapter_name`、`strategy_name`、`chunks`、`relations` 和 `statistics`。
+Structure-aware 示例使用 [`eino-document-parser-structured`](https://github.com/wo4zhuzi/eino-document-parser-structured) 的真实 Markdown Parser，并直接摄取仓库内的示例文件；也可以传入以 `.md` 结尾的 HTTP/HTTPS URL。Parser 声明 `Structured=true` 且粒度为 `block`，基于 CommonMark/GFM AST 输出标题、段落、列表、代码块、引用和表格等结构单元，不由 Chunking 示例手工解析格式或组装 Metadata。成功输出的 JSON 包含 `profile`、`adapter_name`、`strategy_name`、`chunks`、`relations` 和 `statistics`。
 
 ## 注入父级构造器和子级 Transformer
 
@@ -296,18 +306,18 @@ strategy, err := parentchild.NewParentChildStrategy(parentchild.ParentChildConfi
 
 `IngestionAdapter` 不根据扩展名猜测结构，而是严格读取 `ParserInfo.Output`：非结构化输出生成普通 Block；结构化 block 输出读取 `eino_ingestion.structure.*` 并生成 `BlockStructure`。PDF 页码、DOCX Section、XLSX Sheet/Row、FileLoader `_source` 等原有 Metadata 都会保留。
 
-仓库提供了一条完整的离线集成测试：测试先通过 ingestion 的默认 Eino FileLoader 读取临时 Markdown，并由注册到 ingestion Registry 的测试 Parser 输出标题和段落结构单元；同一份 `ingested.Documents` 随后分别进入父子策略和 Structure-aware 策略：
+仓库提供了一条完整的离线集成测试：测试先通过 ingestion 的默认 Eino FileLoader 读取临时 Markdown，再由 `eino-document-parser-structured/markdown` 输出真实结构单元；同一份 `ingested.Documents` 随后分别进入父子策略和 Structure-aware 策略：
 
 ```text
 Markdown 文件
     -> eino-document-ingestion FileLoader
-    -> 已注册的结构化 Markdown Parser
+    -> eino-document-parser-structured/markdown
     -> []*schema.Document
        |-> IngestionAdapter -> ParentChildStrategy
        `-> IngestionAdapter -> StructureAwareStrategy
 ```
 
-该测试 Parser 只用于验证 Loader、Parser 与 Chunking 的职责衔接，不是本项目提供的生产 Markdown Parser。生产环境由 ingestion 注册的实际 Parser 声明输出能力并产出标准 Metadata，调用方不需要再编写 Resolver。
+集成测试直接依赖独立 Parser 的公开 API，不再维护仓库内测试 Parser。生产环境按同样顺序替换 Parser、创建 Ingestor，并将 `ParserInfo + Documents` 交给 `IngestionAdapter`；调用方不需要复制结构 Metadata 或实现 Resolver。
 
 ## Eino Transformer 适配
 
@@ -433,7 +443,7 @@ go vet ./...
 
 - 默认切分按 Unicode 字符计数，不提供模型 Tokenizer；`TokenCount` 默认是 `0`，`CharacterCount` 始终可用。
 - 默认文本边界切分不理解 Markdown AST、代码语法、表格结构或语义相似度；这些能力应通过 FormatAdapter、ParentBuilder 或 ChildSplitter 扩展。
-- Structure-aware Chunk 依赖上游 Parser 声明 `Structured=true` 并提供标准结构 Metadata；默认 PDF、Markdown、TXT、DOCX 和 XLSX Parser 当前都应使用 Parent-child。
+- Structure-aware Chunk 依赖上游 Parser 声明 `Structured=true` 并提供标准结构 Metadata；默认 PDF、Markdown、TXT、DOCX 和 XLSX Parser 仍使用 Parent-child，Markdown 可显式替换为 `eino-document-parser-structured/markdown` 后使用 Structure-aware。
 - Metadata 深拷贝覆盖常见 JSON/Eino map 和 slice 类型；未知自定义引用类型按原值保留，调用方不应在 Chunking 期间并发修改此类对象。
 - 本项目不提供父 Chunk 存储、向量数据库、索引事务、Retriever 聚合或版本发布。
 

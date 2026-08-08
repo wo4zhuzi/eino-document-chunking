@@ -2,21 +2,16 @@ package integration_test
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/components/document/parser"
-	"github.com/cloudwego/eino/schema"
 	chunking "github.com/wo4zhuzi/eino-document-chunking"
 	"github.com/wo4zhuzi/eino-document-chunking/adapter"
 	"github.com/wo4zhuzi/eino-document-chunking/strategy/parentchild"
 	"github.com/wo4zhuzi/eino-document-chunking/strategy/structureaware"
 	ingestion "github.com/wo4zhuzi/eino-document-ingestion"
+	"github.com/wo4zhuzi/eino-document-parser-structured/markdown"
 )
 
 func TestIngestionLoaderParserWithChunkStrategies(t *testing.T) {
@@ -28,8 +23,9 @@ func TestIngestionLoaderParserWithChunkStrategies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ingest() error = %v", err)
 	}
-	if ingested.Parser.Name != "test_structured_markdown" || ingested.Parser.Version != "v1" {
-		t.Fatalf("parser = %#v, want test_structured_markdown@v1", ingested.Parser)
+	wantParser := markdown.ParserInfo()
+	if ingested.Parser.Name != wantParser.Name || ingested.Parser.Version != wantParser.Version {
+		t.Fatalf("parser = %#v, want %#v", ingested.Parser, wantParser)
 	}
 	if len(ingested.Documents) != 4 {
 		t.Fatalf("ingested document count = %d, want 4", len(ingested.Documents))
@@ -55,23 +51,17 @@ func TestIngestionLoaderParserWithChunkStrategies(t *testing.T) {
 
 func newMarkdownIngestor(t *testing.T, ctx context.Context) *ingestion.Ingestor {
 	t.Helper()
-	registry := ingestion.NewRegistry()
-	err := registry.Register(ingestion.Format{
-		Extension:         ingestion.ExtensionMarkdown,
-		MIMEType:          "text/markdown",
-		DetectedMIMETypes: []string{"text/plain"},
-		ParserInfo: ingestion.ParserInfo{
-			Name:    "test_structured_markdown",
-			Version: "v1",
-			Output: ingestion.ParserOutput{
-				Granularity: ingestion.GranularityBlock,
-				Structured:  true,
-			},
-		},
-		Parser: headingMarkdownParser{},
-	})
+	registry, err := ingestion.NewDefaultRegistry(ctx)
 	if err != nil {
-		t.Fatalf("Register() error = %v", err)
+		t.Fatalf("NewDefaultRegistry() error = %v", err)
+	}
+	err = registry.ReplaceParser(
+		ingestion.ExtensionMarkdown,
+		markdown.ParserInfo(),
+		markdown.New(),
+	)
+	if err != nil {
+		t.Fatalf("ReplaceParser() error = %v", err)
 	}
 	ingestor, err := ingestion.New(ctx, ingestion.Config{
 		MaxFileBytes: 1 << 20,
@@ -128,7 +118,7 @@ func newStructureAwareEngine(t *testing.T, parserInfo ingestion.ParserInfo) *chu
 	strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{
 		MaxRunes:       200,
 		MinRunes:       20,
-		HeadingContext: structureaware.HeadingContextPrepend,
+		HeadingContext: structureaware.HeadingContextMetadataOnly,
 	})
 	if err != nil {
 		t.Fatalf("NewStructureAwareStrategy() error = %v", err)
@@ -186,10 +176,16 @@ func assertStructureAwareResult(t *testing.T, result *chunking.Result, sourceURI
 	if result.StrategyName != structureaware.StructureAwareStrategyName {
 		t.Fatalf("strategy = %q, want %q", result.StrategyName, structureaware.StructureAwareStrategyName)
 	}
-	if len(result.Chunks) != 2 {
-		t.Fatalf("structure chunk count = %d, want 2", len(result.Chunks))
+	if len(result.Chunks) != 4 {
+		t.Fatalf("structure chunk count = %d, want 4", len(result.Chunks))
 	}
-	wantPaths := [][]string{{"安装"}, {"运行"}}
+	wantContents := []string{
+		"# 安装",
+		"下载发布包并初始化配置文件。",
+		"# 运行",
+		"启动服务后检查健康检查接口和日志输出。",
+	}
+	wantKinds := []string{"heading", "paragraph", "heading", "paragraph"}
 	for index, chunk := range result.Chunks {
 		if chunk.Kind != structureaware.ChunkKindStructure || chunk.Level != 0 {
 			t.Fatalf("chunk %d kind/level = %q/%d, want structure/0", index, chunk.Kind, chunk.Level)
@@ -197,80 +193,27 @@ func assertStructureAwareResult(t *testing.T, result *chunking.Result, sourceURI
 		if chunk.Metadata["_source"] != sourceURI {
 			t.Fatalf("chunk %d source = %#v, want %q", index, chunk.Metadata["_source"], sourceURI)
 		}
+		if chunk.Content != wantContents[index] {
+			t.Fatalf("chunk %d content = %q, want %q", index, chunk.Content, wantContents[index])
+		}
+		if len(chunk.SourceUnitIDs) != 1 {
+			t.Fatalf("chunk %d source unit count = %d, want 1", index, len(chunk.SourceUnitIDs))
+		}
 		path, ok := chunk.Metadata[structureaware.MetadataStructurePath].([]string)
-		if !ok || !reflect.DeepEqual(path, wantPaths[index]) {
-			t.Fatalf("chunk %d structure path = %#v, want %#v", index, path, wantPaths[index])
+		if !ok || len(path) == 0 || path[len(path)-1] != chunk.SourceUnitIDs[0] {
+			t.Fatalf("chunk %d structure path = %#v, source units = %#v", index, path, chunk.SourceUnitIDs)
 		}
-		if len(chunk.SourceUnitIDs) != 2 {
-			t.Fatalf("chunk %d source unit count = %d, want 2", index, len(chunk.SourceUnitIDs))
+		kinds, ok := chunk.Metadata[structureaware.MetadataStructureBlockKinds].([]string)
+		if !ok || len(kinds) != 1 || kinds[0] != wantKinds[index] {
+			t.Fatalf("chunk %d block kinds = %#v, want %q", index, kinds, wantKinds[index])
 		}
 	}
-	if result.Chunks[0].NextID != result.Chunks[1].ID || result.Chunks[1].PreviousID != result.Chunks[0].ID {
-		t.Fatalf("structure chunk adjacency is not reciprocal")
-	}
-}
-
-type headingMarkdownParser struct{}
-
-func (headingMarkdownParser) Parse(
-	ctx context.Context,
-	reader io.Reader,
-	opts ...parser.Option,
-) ([]*schema.Document, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("parse markdown: %w", err)
-	}
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("read markdown: %w", err)
-	}
-	options := parser.GetCommonOptions(&parser.Options{}, opts...)
-	var documents []*schema.Document
-	var headingID string
-	var path []string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	for index := 1; index < len(result.Chunks); index++ {
+		if result.Chunks[index-1].NextID != result.Chunks[index].ID ||
+			result.Chunks[index].PreviousID != result.Chunks[index-1].ID {
+			t.Fatalf("structure chunk adjacency is not reciprocal at index %d", index)
 		}
-		unitID := fmt.Sprintf("unit-%d", len(documents)+1)
-		metadata := cloneMetadata(options.ExtraMeta)
-		if strings.HasPrefix(line, "# ") {
-			title := strings.TrimSpace(strings.TrimPrefix(line, "# "))
-			if title == "" {
-				return nil, fmt.Errorf("empty markdown heading")
-			}
-			headingID = unitID
-			path = []string{title}
-			metadata[ingestion.MetadataStructureKind] = string(chunking.BlockKindHeading)
-			metadata[ingestion.MetadataStructureDepth] = 0
-			metadata[ingestion.MetadataStructurePath] = append([]string(nil), path...)
-			metadata[ingestion.MetadataStructureBoundary] = string(chunking.BlockBoundaryHard)
-			documents = append(documents, &schema.Document{ID: unitID, Content: title, MetaData: metadata})
-			continue
-		}
-		if headingID == "" {
-			return nil, fmt.Errorf("paragraph appears before the first heading")
-		}
-		metadata[ingestion.MetadataStructureKind] = string(chunking.BlockKindParagraph)
-		metadata[ingestion.MetadataStructureDepth] = 1
-		metadata[ingestion.MetadataStructureParentID] = headingID
-		metadata[ingestion.MetadataStructurePath] = append([]string(nil), path...)
-		metadata[ingestion.MetadataStructureBoundary] = string(chunking.BlockBoundaryNone)
-		documents = append(documents, &schema.Document{ID: unitID, Content: line, MetaData: metadata})
 	}
-	if len(documents) == 0 {
-		return nil, fmt.Errorf("markdown contains no logical units")
-	}
-	return documents, nil
-}
-
-func cloneMetadata(metadata map[string]any) map[string]any {
-	cloned := make(map[string]any, len(metadata))
-	for key, value := range metadata {
-		cloned[key] = value
-	}
-	return cloned
 }
 
 func writeMarkdownFixture(t *testing.T) string {
@@ -282,5 +225,3 @@ func writeMarkdownFixture(t *testing.T) string {
 	}
 	return sourceURI
 }
-
-var _ parser.Parser = headingMarkdownParser{}

@@ -44,3 +44,15 @@
 - 最终执行 `go vet ./...`：通过，无诊断。
 - `go run ./examples/parent-child` 和 `go run ./examples/structure-aware` 均运行成功。
 - Structure-aware 离线示例输出 2 个扁平结构 Chunk、相邻关系和来源关系。
+
+## 2026-08-08
+
+- 用户提供独立结构化 Parser 仓库，要求据此编写结构感知用例。
+- 已确认新模块最新版本为 `v0.0.0-20260808024546-02602d613c64`，并读取 README、Markdown Parser、结构构造和示例源码。
+- 已定位现有根因：`examples/structure-aware` 与 integration 测试仍内嵌手写 Parser，没有覆盖真实依赖；真实 Parser 的 ID path 与 `code_block` 类型还暴露出现有示例配置和原子块识别差异。
+- 已确定最小改动方案：真实 Parser 替换、真实集成测试、`code_block` 兼容、README 更新和全量回归验证。
+- 已删除 `examples/structure-aware/outline_parser.go` 和 `.outline` 输入，新增真实 Markdown 示例并接入 `markdown.ParserInfo()/markdown.New()`。
+- 已将 integration 测试改为独立 Parser 全链路测试，不再维护手写测试 Parser。
+- 已增加 `BlockKindCodeBlock` 及原子块回归测试，超长 `code_block` 无 Splitter 时返回 `ErrOversizeBlock`。
+- 已升级 ingestion 依赖并新增 structured parser 与 Goldmark 依赖，`go mod tidy` 成功。
+- `go test ./... -count=1`、`go test -race ./... -count=1`、`go vet ./...`、结构感知示例运行和 `git diff --check` 全部通过。

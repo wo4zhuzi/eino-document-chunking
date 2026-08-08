@@ -10,6 +10,7 @@ import (
 	"github.com/wo4zhuzi/eino-document-chunking/adapter"
 	"github.com/wo4zhuzi/eino-document-chunking/strategy/structureaware"
 	ingestion "github.com/wo4zhuzi/eino-document-ingestion"
+	"github.com/wo4zhuzi/eino-document-parser-structured/markdown"
 )
 
 func main() {
@@ -21,25 +22,19 @@ func main() {
 
 func run() error {
 	if len(os.Args) != 2 {
-		return fmt.Errorf("用法: go run ./examples/structure-aware <本地 .outline 文件或 HTTP/HTTPS URL>")
+		return fmt.Errorf("用法: go run ./examples/structure-aware <本地 .md 文件或 HTTP/HTTPS URL>")
 	}
 	ctx := context.Background()
-	registry := ingestion.NewRegistry()
-	if err := registry.Register(ingestion.Format{
-		Extension:         outlineExtension,
-		MIMEType:          "text/plain",
-		DetectedMIMETypes: []string{"text/plain"},
-		ParserInfo: ingestion.ParserInfo{
-			Name:    "example_outline",
-			Version: "v1",
-			Output: ingestion.ParserOutput{
-				Granularity: ingestion.GranularityBlock,
-				Structured:  true,
-			},
-		},
-		Parser: outlineParser{},
-	}); err != nil {
-		return fmt.Errorf("注册结构化大纲 Parser: %w", err)
+	registry, err := ingestion.NewDefaultRegistry(ctx)
+	if err != nil {
+		return fmt.Errorf("创建默认 Parser 注册表: %w", err)
+	}
+	if err := registry.ReplaceParser(
+		ingestion.ExtensionMarkdown,
+		markdown.ParserInfo(),
+		markdown.New(),
+	); err != nil {
+		return fmt.Errorf("替换结构化 Markdown Parser: %w", err)
 	}
 	ingestor, err := ingestion.New(ctx, ingestion.Config{Registry: registry})
 	if err != nil {
@@ -62,7 +57,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("创建 ingestion adapter: %w", err)
 	}
-	strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{})
+	strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{
+		HeadingContext: structureaware.HeadingContextMetadataOnly,
+	})
 	if err != nil {
 		return fmt.Errorf("创建 Structure-aware 策略: %w", err)
 	}

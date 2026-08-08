@@ -20,6 +20,7 @@ const (
 	BlockKindParagraph BlockKind = "paragraph"
 	BlockKindListItem  BlockKind = "list_item"
 	BlockKindCode      BlockKind = "code"
+	BlockKindCodeBlock BlockKind = "code_block"
 	BlockKindTable     BlockKind = "table"
 	BlockKindQuote     BlockKind = "quote"
 )

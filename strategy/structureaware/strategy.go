@@ -353,7 +353,9 @@ func cloneBlock(block chunking.Block) chunking.Block {
 }
 
 func isAtomicKind(kind chunking.BlockKind) bool {
-	return kind == chunking.BlockKindCode || kind == chunking.BlockKindTable
+	return kind == chunking.BlockKindCode ||
+		kind == chunking.BlockKindCodeBlock ||
+		kind == chunking.BlockKindTable
 }
 
 func linkAdjacentChunks(chunks []chunking.Chunk) {

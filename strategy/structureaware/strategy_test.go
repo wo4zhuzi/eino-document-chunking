@@ -136,6 +136,23 @@ func TestStructureAwareAtomicOversizeSplitter(t *testing.T) {
 	}
 }
 
+func TestStructureAwareStructuredMarkdownCodeBlockIsAtomic(t *testing.T) {
+	engine := newStructureEngine(t, structureaware.StructureAwareConfig{
+		MaxRunes:       10,
+		MinRunes:       5,
+		HeadingContext: structureaware.HeadingContextMetadataOnly,
+	}, metadataStructureResolver{})
+	document := &schema.Document{
+		ID:       "code-block-1",
+		Content:  "```go\nfmt.Println(\"hello\")\n```",
+		MetaData: structureMetadata(chunking.BlockKindCodeBlock, 0, "", []string{"code-block-1"}, chunking.BlockBoundaryHard),
+	}
+
+	if _, err := engine.Chunk(context.Background(), []*schema.Document{document}); !errors.Is(err, chunking.ErrOversizeBlock) {
+		t.Fatalf("structured Markdown code block error = %v", err)
+	}
+}
+
 func TestStructureAwareLongTextUsesBoundedSplitting(t *testing.T) {
 	engine := newStructureEngine(t, structureaware.StructureAwareConfig{
 		MaxRunes:       20,
