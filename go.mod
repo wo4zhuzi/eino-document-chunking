@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/cloudwego/eino v0.9.12
 	github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260809134505-3e413ddcc4db
-	github.com/wo4zhuzi/eino-document-parser-structured v0.0.0-20260809134633-2195e98f2d37
+	github.com/wo4zhuzi/eino-document-parser-structured v0.0.0-20260809135647-18c7bac60bdc
 )
 
 require (

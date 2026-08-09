@@ -128,8 +128,8 @@ github.com/wk8/go-ordered-map/v2 v2.1.8 h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/
 github.com/wk8/go-ordered-map/v2 v2.1.8/go.mod h1:5nJHM5DyteebpVlHnWMV0rPz6Zp7+xBAnxjb1X5vnTw=
 github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260809134505-3e413ddcc4db h1:U3M+bNj2B7hCI4b4VMfmffDSe2DHbR25rgnsySTAjww=
 github.com/wo4zhuzi/eino-document-ingestion v0.0.0-20260809134505-3e413ddcc4db/go.mod h1:S4XpsjibFFsuvPfs0YNYIXBmkmBt/ngYGG/5rfEOWAA=
-github.com/wo4zhuzi/eino-document-parser-structured v0.0.0-20260809134633-2195e98f2d37 h1:46VdaWJXvYT2GBoZAMB4X01ZZ6WLeUK/+KGtx5hdumA=
-github.com/wo4zhuzi/eino-document-parser-structured v0.0.0-20260809134633-2195e98f2d37/go.mod h1:QVoJIMZ4QYhNV8sMrjfKZcJtsxkXzp9YUtLV/1p/GZI=
+github.com/wo4zhuzi/eino-document-parser-structured v0.0.0-20260809135647-18c7bac60bdc h1:p35Xz+RsndaEDcyjrAmQb12/s6QNWBWop+L489ARl3g=
+github.com/wo4zhuzi/eino-document-parser-structured v0.0.0-20260809135647-18c7bac60bdc/go.mod h1:MT7m/IYqxSkJ9IJA6/Aw0d3F8rpWnYSbnjfjl/addRQ=
 github.com/x-cray/logrus-prefixed-formatter v0.5.2 h1:00txxvfBM9muc0jiLIEAkAcIMJzfthRT6usrui8uGmg=
 github.com/x-cray/logrus-prefixed-formatter v0.5.2/go.mod h1:2duySbKsL6M18s5GU7VPsoEPHyzalCE06qoARUCeBBE=
 github.com/xuri/efp v0.0.0-20240408161823-9ad904a10d6d h1:llb0neMWDQe87IzJLS4Ci7psK/lVsjIS2otl+1WyRyY=
