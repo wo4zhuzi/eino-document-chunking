@@ -183,6 +183,13 @@ func normalizeBlockStructure(blockID string, structure *BlockStructure) error {
 		}
 		structure.Path[index] = item
 	}
+	for index, item := range structure.SemanticPath {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return fmt.Errorf("%w: block %q has an empty semantic structure path item", ErrInvalidStructure, blockID)
+		}
+		structure.SemanticPath[index] = item
+	}
 	return nil
 }
 

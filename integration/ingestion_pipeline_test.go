@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	chunking "github.com/wo4zhuzi/eino-document-chunking"
@@ -176,16 +177,14 @@ func assertStructureAwareResult(t *testing.T, result *chunking.Result, sourceURI
 	if result.StrategyName != structureaware.StructureAwareStrategyName {
 		t.Fatalf("strategy = %q, want %q", result.StrategyName, structureaware.StructureAwareStrategyName)
 	}
-	if len(result.Chunks) != 4 {
-		t.Fatalf("structure chunk count = %d, want 4", len(result.Chunks))
+	if len(result.Chunks) != 2 {
+		t.Fatalf("structure chunk count = %d, want 2", len(result.Chunks))
 	}
 	wantContents := []string{
-		"# 安装",
-		"下载发布包并初始化配置文件。",
-		"# 运行",
-		"启动服务后检查健康检查接口和日志输出。",
+		"# 安装\n\n下载发布包并初始化配置文件。",
+		"# 运行\n\n启动服务后检查健康检查接口和日志输出。",
 	}
-	wantKinds := []string{"heading", "paragraph", "heading", "paragraph"}
+	wantLabels := []string{"安装", "运行"}
 	for index, chunk := range result.Chunks {
 		if chunk.Kind != structureaware.ChunkKindStructure || chunk.Level != 0 {
 			t.Fatalf("chunk %d kind/level = %q/%d, want structure/0", index, chunk.Kind, chunk.Level)
@@ -196,16 +195,20 @@ func assertStructureAwareResult(t *testing.T, result *chunking.Result, sourceURI
 		if chunk.Content != wantContents[index] {
 			t.Fatalf("chunk %d content = %q, want %q", index, chunk.Content, wantContents[index])
 		}
-		if len(chunk.SourceUnitIDs) != 1 {
-			t.Fatalf("chunk %d source unit count = %d, want 1", index, len(chunk.SourceUnitIDs))
+		if len(chunk.SourceUnitIDs) != 2 {
+			t.Fatalf("chunk %d source unit count = %d, want 2", index, len(chunk.SourceUnitIDs))
 		}
 		path, ok := chunk.Metadata[structureaware.MetadataStructurePath].([]string)
 		if !ok || len(path) == 0 || path[len(path)-1] != chunk.SourceUnitIDs[0] {
 			t.Fatalf("chunk %d structure path = %#v, source units = %#v", index, path, chunk.SourceUnitIDs)
 		}
+		semanticPath, ok := chunk.Metadata[structureaware.MetadataStructureSemanticPath].([]string)
+		if !ok || !reflect.DeepEqual(semanticPath, []string{wantLabels[index]}) {
+			t.Fatalf("chunk %d semantic path = %#v, want %q", index, semanticPath, wantLabels[index])
+		}
 		kinds, ok := chunk.Metadata[structureaware.MetadataStructureBlockKinds].([]string)
-		if !ok || len(kinds) != 1 || kinds[0] != wantKinds[index] {
-			t.Fatalf("chunk %d block kinds = %#v, want %q", index, kinds, wantKinds[index])
+		if !ok || !reflect.DeepEqual(kinds, []string{"heading", "paragraph"}) {
+			t.Fatalf("chunk %d block kinds = %#v", index, kinds)
 		}
 	}
 	for index := 1; index < len(result.Chunks); index++ {

@@ -126,6 +126,9 @@ func cloneStructure(structure *chunking.BlockStructure) *chunking.BlockStructure
 	}
 	cloned := *structure
 	cloned.Path = append([]string(nil), structure.Path...)
+	if structure.SemanticPath != nil {
+		cloned.SemanticPath = append([]string{}, structure.SemanticPath...)
+	}
 	return &cloned
 }
 

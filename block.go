@@ -36,9 +36,10 @@ const (
 
 // BlockStructure contains optional format-neutral structure information.
 type BlockStructure struct {
-	Kind     BlockKind     `json:"kind"`
-	Depth    int           `json:"depth"`
-	ParentID string        `json:"parent_id,omitempty"`
-	Path     []string      `json:"path,omitempty"`
-	Boundary BlockBoundary `json:"boundary,omitempty"`
+	Kind         BlockKind     `json:"kind"`
+	Depth        int           `json:"depth"`
+	ParentID     string        `json:"parent_id,omitempty"`
+	Path         []string      `json:"path,omitempty"`
+	SemanticPath []string      `json:"semantic_path"`
+	Boundary     BlockBoundary `json:"boundary,omitempty"`
 }

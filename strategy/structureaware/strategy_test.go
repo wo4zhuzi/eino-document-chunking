@@ -178,6 +178,31 @@ func TestStructureAwareLongTextUsesBoundedSplitting(t *testing.T) {
 	}
 }
 
+func TestStructureAwareUsesSemanticPathForHeadingContext(t *testing.T) {
+	engine := newStructureEngine(t, structureaware.StructureAwareConfig{
+		MaxRunes: 40,
+		MinRunes: 10,
+	}, metadataStructureResolver{})
+	document := &schema.Document{
+		ID:       "body",
+		Content:  "Install the service.",
+		MetaData: structureMetadata(chunking.BlockKindParagraph, 1, "", []string{"heading-id"}, chunking.BlockBoundaryNone),
+	}
+	document.MetaData["structure_semantic_path"] = []string{"Guide", "Install"}
+
+	result, err := engine.Chunk(context.Background(), []*schema.Document{document})
+	if err != nil {
+		t.Fatalf("Chunk() error = %v", err)
+	}
+	if len(result.Chunks) != 1 || result.Chunks[0].Content != "Guide > Install\n\nInstall the service." {
+		t.Fatalf("chunks = %#v", result.Chunks)
+	}
+	if !reflect.DeepEqual(result.Chunks[0].Metadata[structureaware.MetadataStructurePath], []string{"heading-id"}) ||
+		!reflect.DeepEqual(result.Chunks[0].Metadata[structureaware.MetadataStructureSemanticPath], []string{"Guide", "Install"}) {
+		t.Fatalf("structure metadata = %#v", result.Chunks[0].Metadata)
+	}
+}
+
 func TestStructureAwareErrors(t *testing.T) {
 	invalidConfigs := []structureaware.StructureAwareConfig{
 		{MaxRunes: -1},
@@ -417,13 +442,15 @@ func (metadataStructureResolver) Resolve(
 	depth, _ := metadata["structure_depth"].(int)
 	parentID, _ := metadata["structure_parent_id"].(string)
 	path, _ := metadata["structure_path"].([]string)
+	semanticPath, _ := metadata["structure_semantic_path"].([]string)
 	boundary, _ := metadata["structure_boundary"].(string)
 	return &chunking.BlockStructure{
-		Kind:     chunking.BlockKind(kind),
-		Depth:    depth,
-		ParentID: parentID,
-		Path:     append([]string(nil), path...),
-		Boundary: chunking.BlockBoundary(boundary),
+		Kind:         chunking.BlockKind(kind),
+		Depth:        depth,
+		ParentID:     parentID,
+		Path:         append([]string(nil), path...),
+		SemanticPath: append([]string(nil), semanticPath...),
+		Boundary:     chunking.BlockBoundary(boundary),
 	}, nil
 }
 

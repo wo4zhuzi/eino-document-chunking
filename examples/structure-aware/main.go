@@ -59,7 +59,7 @@ func run() error {
 	}
 	strategy, err := structureaware.NewStructureAwareStrategy(structureaware.StructureAwareConfig{
 		MaxRunes:       3000,
-		HeadingContext: structureaware.HeadingContextMetadataOnly,
+		HeadingContext: structureaware.HeadingContextPrepend,
 	})
 	if err != nil {
 		return fmt.Errorf("创建 Structure-aware 策略: %w", err)

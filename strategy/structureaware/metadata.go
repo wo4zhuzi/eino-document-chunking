@@ -12,6 +12,8 @@ const (
 	MetadataStructureDepth = "eino_chunking.structure.depth"
 	// MetadataStructurePath records the heading or section path.
 	MetadataStructurePath = "eino_chunking.structure.path"
+	// MetadataStructureSemanticPath records the human-readable heading or section path.
+	MetadataStructureSemanticPath = "eino_chunking.structure.semantic_path"
 	// MetadataStructureBlockKinds records the logical block kinds in a chunk.
 	MetadataStructureBlockKinds = "eino_chunking.structure.block_kinds"
 )
@@ -19,6 +21,7 @@ const (
 var structureMetadataKeys = [...]string{
 	MetadataStructureDepth,
 	MetadataStructurePath,
+	MetadataStructureSemanticPath,
 	MetadataStructureBlockKinds,
 }
 
@@ -26,6 +29,7 @@ func decorateStructureMetadata(
 	metadata map[string]any,
 	depth int,
 	path []string,
+	semanticPath []string,
 	kinds []chunking.BlockKind,
 ) (map[string]any, error) {
 	decorated := metadatautil.Clone(metadata)
@@ -40,6 +44,7 @@ func decorateStructureMetadata(
 	}
 	decorated[MetadataStructureDepth] = depth
 	decorated[MetadataStructurePath] = append([]string(nil), path...)
+	decorated[MetadataStructureSemanticPath] = append([]string(nil), semanticPath...)
 	decorated[MetadataStructureBlockKinds] = blockKinds
 	return decorated, nil
 }

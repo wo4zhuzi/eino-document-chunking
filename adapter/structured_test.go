@@ -12,16 +12,18 @@ import (
 
 func TestStructuredDocumentAdapter(t *testing.T) {
 	resolverPath := []string{"Guide", "Install"}
+	resolverSemanticPath := []string{"指南", "安装"}
 	adapter, err := NewStructuredDocumentAdapter(StructuredDocumentAdapterConfig{
 		Resolver: StructureResolverFunc(func(_ context.Context, document *schema.Document) (*chunking.BlockStructure, error) {
 			document.Content = "mutated"
 			document.MetaData["nested"].(map[string]any)["owner"] = "mutated"
 			return &chunking.BlockStructure{
-				Kind:     chunking.BlockKindParagraph,
-				Depth:    2,
-				ParentID: "heading-install",
-				Path:     resolverPath,
-				Boundary: chunking.BlockBoundarySoft,
+				Kind:         chunking.BlockKindParagraph,
+				Depth:        2,
+				ParentID:     "heading-install",
+				Path:         resolverPath,
+				SemanticPath: resolverSemanticPath,
+				Boundary:     chunking.BlockBoundarySoft,
 			}, nil
 		}),
 	})
@@ -50,11 +52,12 @@ func TestStructuredDocumentAdapter(t *testing.T) {
 		t.Fatalf("block = %#v", block)
 	}
 	wantStructure := &chunking.BlockStructure{
-		Kind:     chunking.BlockKindParagraph,
-		Depth:    2,
-		ParentID: "heading-install",
-		Path:     []string{"Guide", "Install"},
-		Boundary: chunking.BlockBoundarySoft,
+		Kind:         chunking.BlockKindParagraph,
+		Depth:        2,
+		ParentID:     "heading-install",
+		Path:         []string{"Guide", "Install"},
+		SemanticPath: []string{"指南", "安装"},
+		Boundary:     chunking.BlockBoundarySoft,
 	}
 	if !reflect.DeepEqual(block.Structure, wantStructure) {
 		t.Fatalf("structure = %#v, want %#v", block.Structure, wantStructure)
@@ -63,8 +66,9 @@ func TestStructuredDocumentAdapter(t *testing.T) {
 		t.Fatalf("resolver mutated caller document: %#v", document)
 	}
 	resolverPath[0] = "changed"
-	if block.Structure.Path[0] != "Guide" {
-		t.Fatalf("structure path aliases resolver output: %#v", block.Structure.Path)
+	resolverSemanticPath[0] = "changed"
+	if block.Structure.Path[0] != "Guide" || block.Structure.SemanticPath[0] != "指南" {
+		t.Fatalf("structure paths alias resolver output: %#v", block.Structure)
 	}
 }
 

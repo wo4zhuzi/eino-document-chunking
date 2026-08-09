@@ -2,6 +2,7 @@ package chunking_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -16,6 +17,33 @@ import (
 	"github.com/wo4zhuzi/eino-document-chunking/internal/metadatautil"
 	"github.com/wo4zhuzi/eino-document-chunking/strategy/parentchild"
 )
+
+func TestBlockStructureSemanticPathJSONPreservesResolutionState(t *testing.T) {
+	tests := []struct {
+		name         string
+		semanticPath []string
+	}{
+		{name: "not provided"},
+		{name: "resolved empty", semanticPath: []string{}},
+		{name: "resolved labels", semanticPath: []string{"指南", "安装"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := BlockStructure{Kind: BlockKindParagraph, SemanticPath: test.semanticPath}
+			encoded, err := json.Marshal(input)
+			if err != nil {
+				t.Fatalf("json.Marshal() error = %v", err)
+			}
+			var output BlockStructure
+			if err := json.Unmarshal(encoded, &output); err != nil {
+				t.Fatalf("json.Unmarshal() error = %v", err)
+			}
+			if (output.SemanticPath == nil) != (test.semanticPath == nil) || !reflect.DeepEqual(output.SemanticPath, test.semanticPath) {
+				t.Fatalf("semantic path round trip = %#v, want %#v, json=%s", output.SemanticPath, test.semanticPath, encoded)
+			}
+		})
+	}
+}
 
 func TestNilBlankAndMixedInputs(t *testing.T) {
 	engine := newTestEngine(t, 32, 12)
@@ -260,14 +288,15 @@ func TestEngineProtectsInputFromMutatingDependencies(t *testing.T) {
 	}
 
 	structure := &BlockStructure{
-		Kind: BlockKindParagraph,
-		Path: []string{"original"},
+		Kind:         BlockKindParagraph,
+		Path:         []string{"original"},
+		SemanticPath: []string{"原始"},
 	}
 	structureEngine := newEngineForTest(t, &structureAdapter{structure: structure}, &structureMutatingStrategy{}, nil)
 	if _, err := structureEngine.Chunk(context.Background(), []*schema.Document{{ID: "doc", Content: "content"}}); err != nil {
 		t.Fatalf("Chunk(structure mutation) error = %v", err)
 	}
-	if structure.Path[0] != "original" {
+	if structure.Path[0] != "original" || structure.SemanticPath[0] != "原始" {
 		t.Fatalf("strategy mutated adapter-owned structure: %#v", structure)
 	}
 }
@@ -472,6 +501,7 @@ type structureMutatingStrategy struct{}
 func (*structureMutatingStrategy) Name() string { return "structure_mutating_strategy" }
 func (*structureMutatingStrategy) Chunk(ctx context.Context, input StrategyInput) (*StrategyOutput, error) {
 	input.Blocks[0].Structure.Path[0] = "mutated"
+	input.Blocks[0].Structure.SemanticPath[0] = "mutated"
 	return (&customStrategy{}).Chunk(ctx, input)
 }
 

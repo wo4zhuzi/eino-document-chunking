@@ -48,36 +48,72 @@ func TestIngestionAdapterStructuredOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewIngestionAdapter() error = %v", err)
 	}
-	path := []string{"Guide", "Install"}
-	document := &schema.Document{
-		ID:      "install-body",
-		Content: "Install the service.",
-		MetaData: map[string]any{
-			"_source":                           "guide.md",
-			ingestion.MetadataStructureKind:     "paragraph",
-			ingestion.MetadataStructureDepth:    int64(2),
-			ingestion.MetadataStructureParentID: "install",
-			ingestion.MetadataStructurePath:     path,
-			ingestion.MetadataStructureBoundary: "soft",
+	headingPath := []string{"guide", "install"}
+	paragraphPath := []string{"guide", "install", "install-body"}
+	documents := []*schema.Document{
+		{
+			ID:      "install",
+			Content: "Install",
+			MetaData: map[string]any{
+				"_source":                           "guide.md",
+				ingestion.MetadataStructureKind:     "heading",
+				ingestion.MetadataStructureDepth:    int64(1),
+				ingestion.MetadataStructureParentID: "guide",
+				ingestion.MetadataStructurePath:     headingPath,
+				ingestion.MetadataStructureBoundary: "hard",
+				ingestion.MetadataStructureLabel:    " Install ",
+			},
+		},
+		{
+			ID:      "install-body",
+			Content: "Install the service.",
+			MetaData: map[string]any{
+				"_source":                           "guide.md",
+				ingestion.MetadataStructureKind:     "paragraph",
+				ingestion.MetadataStructureDepth:    int64(2),
+				ingestion.MetadataStructureParentID: "install",
+				ingestion.MetadataStructurePath:     paragraphPath,
+				ingestion.MetadataStructureBoundary: "soft",
+			},
 		},
 	}
-	blocks, err := formatAdapter.Adapt(context.Background(), []*schema.Document{document})
+	blocks, err := formatAdapter.Adapt(context.Background(), documents)
 	if err != nil {
 		t.Fatalf("Adapt() error = %v", err)
 	}
-	want := &chunking.BlockStructure{
-		Kind:     chunking.BlockKindParagraph,
-		Depth:    2,
-		ParentID: "install",
-		Path:     []string{"Guide", "Install"},
-		Boundary: chunking.BlockBoundarySoft,
+	want := []*chunking.BlockStructure{
+		{
+			Kind:         chunking.BlockKindHeading,
+			Depth:        1,
+			ParentID:     "guide",
+			Path:         []string{"guide", "install"},
+			SemanticPath: []string{"Install"},
+			Boundary:     chunking.BlockBoundaryHard,
+		},
+		{
+			Kind:         chunking.BlockKindParagraph,
+			Depth:        2,
+			ParentID:     "install",
+			Path:         []string{"guide", "install"},
+			SemanticPath: []string{"Install"},
+			Boundary:     chunking.BlockBoundarySoft,
+		},
 	}
-	if len(blocks) != 1 || !reflect.DeepEqual(blocks[0].Structure, want) {
-		t.Fatalf("structure = %#v, want %#v", blocks[0].Structure, want)
+	if len(blocks) != len(want) {
+		t.Fatalf("blocks = %#v", blocks)
 	}
-	path[0] = "changed"
-	if blocks[0].Structure.Path[0] != "Guide" {
-		t.Fatalf("structure path aliases input: %#v", blocks[0].Structure.Path)
+	for index := range want {
+		if !reflect.DeepEqual(blocks[index].Structure, want[index]) {
+			t.Fatalf("structure[%d] = %#v, want %#v", index, blocks[index].Structure, want[index])
+		}
+	}
+	if !reflect.DeepEqual(blocks[1].Metadata[ingestion.MetadataStructurePath], paragraphPath) {
+		t.Fatalf("original node path was not preserved: %#v", blocks[1].Metadata)
+	}
+	headingPath[0] = "changed"
+	paragraphPath[0] = "changed"
+	if blocks[0].Structure.Path[0] != "guide" || blocks[1].Structure.Path[0] != "guide" {
+		t.Fatalf("structure path aliases input: %#v %#v", blocks[0].Structure.Path, blocks[1].Structure.Path)
 	}
 }
 

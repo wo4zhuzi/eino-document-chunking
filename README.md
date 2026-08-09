@@ -190,7 +190,8 @@ Structure-aware Chunk 消费上游 Parser 已经拆分好的标题、段落、�
 - `Kind`：`text`、`heading`、`paragraph`、`list_item`、`code`、`code_block`、`table`、`quote` 或调用方扩展类型。
 - `Depth`：原始逻辑结构深度。
 - `ParentID`：可选的结构父 Block ID。
-- `Path`：结构路径。`eino-document-parser-structured` 使用从根到当前 block 的 Document ID 路径；自定义 Resolver 也可以提供可读的标题或章节路径。
+- `Path`：章节身份路径，用于判断 Block 是否属于同一章节。`IngestionAdapter` 会把上游包含当前节点 ID 的 Node Path 归一化为所属章节 Path；自定义 Resolver 可继续直接提供已有路径。
+- `SemanticPath`：可选的可读标题路径。`IngestionAdapter` 根据 Heading Label 自动解析；自定义 Resolver 未提供时，策略兼容回退使用 `Path`。
 - `Boundary`：无边界、软边界或硬边界。
 
 默认策略行为：
@@ -199,7 +200,7 @@ Structure-aware Chunk 消费上游 Parser 已经拆分好的标题、段落、�
 - Heading 开始新的结构 Chunk；不同结构路径不会合并。
 - 软边界在当前 Chunk 达到 `MinRunes` 后优先切分。
 - 相邻兼容 Block 在 `MaxRunes` 内合并。
-- 结构路径默认写入 Chunk 内容和 Metadata；当上游 path 是结构 ID 时，应使用 `HeadingContextMetadataOnly`，避免把 ID 前缀写入正文。
+- 章节身份路径和可读路径分别写入 Metadata；`HeadingContextPrepend` 只把可读路径写入 Chunk 内容，不会拼接 ingestion 的结构 ID。
 - 普通超长文本按稳定自然边界切分。
 - `code`、`code_block` 和 `table` 作为原子块，超限时必须提供 `OversizeSplitter`，否则返回 `ErrOversizeBlock`。
 - 输出是扁平 `structure` Chunk，`Level` 固定为 `0`；原始结构深度保存在 `eino_chunking.structure.depth`。
@@ -225,7 +226,7 @@ strategy, err := structureaware.NewStructureAwareStrategy(
 	structureaware.StructureAwareConfig{
 		MaxRunes:       1800,
 		MinRunes:       600,
-		HeadingContext: structureaware.HeadingContextMetadataOnly,
+		HeadingContext: structureaware.HeadingContextPrepend,
 	},
 )
 if err != nil {
@@ -245,7 +246,7 @@ if err != nil {
 go run ./examples/structure-aware ./examples/structure-aware/example.md
 ```
 
-示例先通过 `ingestion.NewDefaultRegistry` 创建默认 Registry，再使用 `markdown.ParserInfo()` 和 `markdown.New()` 替换默认 Markdown Parser，最后创建 Ingestor。这个顺序不能颠倒，因为 Ingestor 会复制 Registry 快照。示例不手工创建 Document 或结构 Metadata，并显式使用 `HeadingContextMetadataOnly` 消费 Parser 的结构 ID path。
+示例先通过 `ingestion.NewDefaultRegistry` 创建默认 Registry，再使用 `markdown.ParserInfo()` 和 `markdown.New()` 替换默认 Markdown Parser，最后创建 Ingestor。这个顺序不能颠倒，因为 Ingestor 会复制 Registry 快照。示例不手工创建 Document 或结构 Metadata；Parser 输出 Heading Label，`IngestionAdapter` 据此生成可读 `SemanticPath`，Structure-aware 策略按章节合并相邻 Block。
 
 通用自动选择示例仍可用于默认 Parser：
 
@@ -398,9 +399,10 @@ Structure-aware Strategy 另外集中定义：
 |---|---|
 | `MetadataStructureDepth` | `eino_chunking.structure.depth` |
 | `MetadataStructurePath` | `eino_chunking.structure.path` |
+| `MetadataStructureSemanticPath` | `eino_chunking.structure.semantic_path` |
 | `MetadataStructureBlockKinds` | `eino_chunking.structure.block_kinds` |
 
-`IngestionAdapter` 消费 ingestion 定义的 `eino_ingestion.structure.*` 输入字段，并将其转换为 `BlockStructure`。这些输入字段会随原始 Metadata 一并保留；使用者不需要复制字段或实现 Resolver。
+`IngestionAdapter` 消费 ingestion 定义的 `eino_ingestion.structure.*` 输入字段，并将其转换为 `BlockStructure`。原始 Node Path 等输入字段会随 Metadata 保留；适配器另外生成章节身份 Path 和可读 SemanticPath，使用者不需要复制字段或实现 Resolver。
 
 这些 Key 属于保留命名空间。输入或自定义策略提前写入同名 Key 时返回 `ErrMetadataConflict`，不会覆盖调用方字段。
 

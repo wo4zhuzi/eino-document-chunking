@@ -15,7 +15,8 @@ const ingestionAdapterName = "ingestion"
 
 // IngestionAdapter consumes the standard output contract of eino-document-ingestion.
 type IngestionAdapter struct {
-	delegate chunking.FormatAdapter
+	delegate   chunking.FormatAdapter
+	structured bool
 }
 
 // NewIngestionAdapter selects plain or structured conversion from ParserInfo.Output.
@@ -47,7 +48,7 @@ func NewIngestionAdapter(info ingestion.ParserInfo) (*IngestionAdapter, error) {
 		}
 		delegate = structured
 	}
-	return &IngestionAdapter{delegate: delegate}, nil
+	return &IngestionAdapter{delegate: delegate, structured: info.Output.Structured}, nil
 }
 
 // Name implements chunking.FormatAdapter.
@@ -63,7 +64,42 @@ func (adapter *IngestionAdapter) Adapt(
 	if adapter == nil || adapter.delegate == nil {
 		return nil, fmt.Errorf("%w: ingestion adapter is unavailable", chunking.ErrInvalidConfig)
 	}
-	return adapter.delegate.Adapt(ctx, documents)
+	blocks, err := adapter.delegate.Adapt(ctx, documents)
+	if err != nil {
+		return nil, err
+	}
+	if adapter.structured {
+		normalizeIngestionStructurePaths(blocks)
+	}
+	return blocks, nil
+}
+
+func normalizeIngestionStructurePaths(blocks []chunking.Block) {
+	labelByID := make(map[string]string, len(blocks))
+	for _, block := range blocks {
+		label, ok := block.Metadata[ingestion.MetadataStructureLabel].(string)
+		if ok && strings.TrimSpace(label) != "" {
+			labelByID[block.ID] = strings.TrimSpace(label)
+		}
+	}
+	for index := range blocks {
+		structure := blocks[index].Structure
+		if structure == nil {
+			continue
+		}
+		sectionPath := structure.Path
+		if structure.Kind != chunking.BlockKindHeading &&
+			len(sectionPath) > 0 && sectionPath[len(sectionPath)-1] == blocks[index].ID {
+			sectionPath = sectionPath[:len(sectionPath)-1]
+		}
+		structure.Path = append([]string(nil), sectionPath...)
+		structure.SemanticPath = make([]string, 0, len(sectionPath))
+		for _, nodeID := range sectionPath {
+			if label, exists := labelByID[nodeID]; exists {
+				structure.SemanticPath = append(structure.SemanticPath, label)
+			}
+		}
+	}
 }
 
 type ingestionStructureResolver struct{}

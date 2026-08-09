@@ -27,6 +27,7 @@ type structuredUnit struct {
 type chunkDraft struct {
 	documentID    string
 	path          []string
+	semanticPath  []string
 	depth         int
 	units         []structuredUnit
 	sourceUnitIDs []string
@@ -116,7 +117,7 @@ func (strategy *StructureAwareStrategy) prepareBlock(
 	if err := contextError(ctx, "prepare structured block"); err != nil {
 		return nil, err
 	}
-	available := strategy.availableBodyRunes(block.Structure.Path, block.Structure.Kind == chunking.BlockKindHeading)
+	available := strategy.availableBodyRunes(structureContextPath(block.Structure), block.Structure.Kind == chunking.BlockKindHeading)
 	if available < 1 {
 		return nil, fmt.Errorf("%w: block %q structure path consumes MaxRunes", chunking.ErrOversizeBlock, block.ID)
 	}
@@ -167,7 +168,8 @@ func (strategy *StructureAwareStrategy) mustStartNew(current *chunkDraft, unit s
 	if current.documentID != unit.block.DocumentID ||
 		structure.Boundary == chunking.BlockBoundaryHard ||
 		structure.Kind == chunking.BlockKindHeading ||
-		!slices.Equal(current.path, structure.Path) {
+		!slices.Equal(current.path, structure.Path) ||
+		!slices.Equal(current.semanticPath, structureContextPath(structure)) {
 		return true
 	}
 	if structure.Boundary == chunking.BlockBoundarySoft && strategy.renderedRunes(current) >= strategy.minRunes {
@@ -214,7 +216,7 @@ func (strategy *StructureAwareStrategy) appendChunk(
 		return nil, fmt.Errorf("%w: chunk id %q", chunking.ErrDuplicateID, id)
 	}
 	seenIDs[id] = struct{}{}
-	metadata, err := decorateStructureMetadata(draft.metadata, draft.depth, draft.path, draft.kinds)
+	metadata, err := decorateStructureMetadata(draft.metadata, draft.depth, draft.path, draft.semanticPath, draft.kinds)
 	if err != nil {
 		return nil, err
 	}
@@ -240,19 +242,27 @@ func (strategy *StructureAwareStrategy) render(draft *chunkDraft) string {
 		parts[index] = unit.content
 	}
 	body := strings.Join(parts, "\n\n")
-	if strategy.headingContext != HeadingContextPrepend || len(draft.path) == 0 || draft.hasHeading {
+	if strategy.headingContext != HeadingContextPrepend || len(draft.semanticPath) == 0 || draft.hasHeading {
 		return body
 	}
-	return strings.Join(draft.path, " > ") + "\n\n" + body
+	return strings.Join(draft.semanticPath, " > ") + "\n\n" + body
+}
+
+func structureContextPath(structure *chunking.BlockStructure) []string {
+	if structure.SemanticPath != nil {
+		return structure.SemanticPath
+	}
+	return structure.Path
 }
 
 func newChunkDraft(unit structuredUnit) *chunkDraft {
 	structure := unit.block.Structure
 	draft := &chunkDraft{
-		documentID: unit.block.DocumentID,
-		path:       append([]string(nil), structure.Path...),
-		depth:      structure.Depth,
-		metadata:   metadatautil.Clone(unit.block.Metadata),
+		documentID:   unit.block.DocumentID,
+		path:         append([]string(nil), structure.Path...),
+		semanticPath: append([]string(nil), structureContextPath(structure)...),
+		depth:        structure.Depth,
+		metadata:     metadatautil.Clone(unit.block.Metadata),
 	}
 	draft.add(unit)
 	return draft
@@ -278,6 +288,7 @@ func (draft *chunkDraft) add(unit structuredUnit) {
 func (draft *chunkDraft) clone() *chunkDraft {
 	cloned := *draft
 	cloned.path = append([]string(nil), draft.path...)
+	cloned.semanticPath = append([]string(nil), draft.semanticPath...)
 	cloned.units = append([]structuredUnit(nil), draft.units...)
 	cloned.sourceUnitIDs = append([]string(nil), draft.sourceUnitIDs...)
 	cloned.metadata = metadatautil.Clone(draft.metadata)
@@ -347,6 +358,9 @@ func cloneBlock(block chunking.Block) chunking.Block {
 	if block.Structure != nil {
 		structure := *block.Structure
 		structure.Path = append([]string(nil), block.Structure.Path...)
+		if block.Structure.SemanticPath != nil {
+			structure.SemanticPath = append([]string{}, block.Structure.SemanticPath...)
+		}
 		cloned.Structure = &structure
 	}
 	return cloned

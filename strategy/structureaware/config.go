@@ -10,13 +10,13 @@ import (
 // DefaultMaxRunes is the default maximum size of one structure-aware chunk.
 const DefaultMaxRunes = 1000
 
-// HeadingContextMode controls whether structure paths are included in chunk content.
+// HeadingContextMode controls whether semantic structure paths are included in chunk content.
 type HeadingContextMode string
 
 const (
-	// HeadingContextPrepend writes the structure path into chunk content.
+	// HeadingContextPrepend writes the semantic structure path into chunk content.
 	HeadingContextPrepend HeadingContextMode = "prepend"
-	// HeadingContextMetadataOnly keeps the structure path only in metadata.
+	// HeadingContextMetadataOnly keeps the semantic structure path only in metadata.
 	HeadingContextMetadataOnly HeadingContextMode = "metadata_only"
 )
 
